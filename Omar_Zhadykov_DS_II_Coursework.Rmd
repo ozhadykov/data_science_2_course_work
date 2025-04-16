@@ -1,0 +1,130 @@
+---
+title: "Coursework - Data Science II"
+author: "Name(s), Student ID(s)"
+output:
+  html_notebook:
+    fig_width: 10
+    theme: spacelab
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  word_document:
+    toc: yes
+    toc_depth: '3'
+  pdf_document: default
+  html_document:
+    fig_width: 10
+    theme: spacelab
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+---
+
+<script>
+$(document).ready(function() {
+  $items = $('div#TOC li');
+  $items.each(function(idx) {
+    num_ul = $(this).parentsUntil('#TOC').length;
+    $(this).css({'text-indent': num_ul * 10, 'padding-left': 0});
+  });
+
+});
+</script>
+
+```{r setup, warning=FALSE, message=FALSE, echo=FALSE}
+library(svglite)
+library(knitr)
+suppressPackageStartupMessages(library(data.table))
+library(ggplot2)
+knitr::opts_chunk$set(dev = "svglite")
+
+# Put your dataset in the same folder as your R file. This code will set your working directory for this notebook to the folder where the R file is stored. This way I can rerun your code without modifications.
+
+library(rstudioapi)
+setwd(dirname(getActiveDocumentContext()$path))
+```
+
+# Introduction
+
+- Identify and formulate a regression **or** a classification problem of interest to you that calls for a data-driven answer. You can start with your domain-specific interests or by looking for an interesting dataset. 
+- Aim for at least 5 input variables.
+- Explain your variables briefly
+
+# Description
+
+- Collect your dataset(s), explore your data for deficiencies such as missing data and formatting problems and prepare it for modelling. 
+- Extensive data collection and preparation yields extra credit but is not mandatory for this coursework. 
+- Explore the data via descriptive statistics and visualization.
+
+
+# Models 1 & 2
+
+- Use at least two different models to investigate your regression or classification problem. Both models receive the same input variables.
+- If you tune your model/s for some metric, only use the final tuned version of your model in the comparison.
+- Evaluate and compare your models based on a reasonable evaluation metric of your choice. You must use the same metric for both models. Report both the training and the CV loss. 
+
+# Ensemble 
+
+- Repeat the analysis one ensemble method of your choice. 
+- Investigate the hyperparameter settings of your ensemble with regards to your evaluation metric. 
+- Report both the training and the CV loss. 
+- Select the best configurations of your ensemble model based on the same evaluation metric as before.
+
+# Neural Network
+
+- Repeat the analysis with a neural network. 
+- Investigate three different configurations with regards to your evaluation metric and select the best configuration. Use the same evaluation metric as before.
+- Report both the training and the CV loss. 
+
+# Model Comparison
+
+- Compare the performance of the 4 models.
+
+# PCA
+
+- Run a PCA on your input variables and discuss the scope for dimensionality reduction in your dataset.
+- Rerun the previous 4 models on all PCs or on a reduced number of PCs.
+
+# Model Selection
+
+- Compare all of your models based on their CV performance. You will have 8 options to consider: four models with and without PCA.
+- Present the results in a table or chart.
+- Estimate the expected loss of your best model on the test set.
+
+***
+
+# Instructions (remove)
+
+The previous part can be used as a template for your coursework. This part should be removed. 
+
+## Submission
+
+Hand in the entire coursework as one reproducible R notebook along with the dataset(s) you used. Your reader must be in a position to rerun all of your code and to reproduce all of your computations and plots. 
+
+Before your hand in your notebook: Run the entire script (without errors), hit *preview* to create the notebook and inspect it in your browser for any missing content/visual glitches. Zip up your notebook (html file) and your dataset, rename the ZIP file with your name and student ID and upload it to StudIP before the deadline.
+
+You may submit your coursework before the deadline and update/re-upload your submission as often as you wish until the deadline. I will consider the most recent file.
+
+## Organizational Issues
+
+You may work in groups of two. Both group members must be able to explain the entire work/codebase.
+
+The coursework is guided. You must set up at least two consultations: One to discuss your problem/dataset and another one week before the deadline at the latest. The consultations can be online or in person. If you require/desire more consultations, feel free to contact me or approach me after class.
+
+## Plagiarism
+
+You must be able to explain every code chunk in your script. You may use code from the course scripts and the assignments, i.e. build on your work throughout the semester. Previous submissions attest to the success of this strategy and examples are available online as a guide. 
+
+If you employ models or methods not covered in this course, be prepared to be quizzed on them. Failure to explain your code or outside material in the oral exam will result in a fail in both the coursework and the oral exam.
+
+## Grading
+
+
+The coursework should reflect your ability to aptly use the covered models in R. Explain your findings in the text that accompanies your code. The predictive performance of your model is not graded but your ability to inquire into your data in R.
+
+
+
+
+
+
+
