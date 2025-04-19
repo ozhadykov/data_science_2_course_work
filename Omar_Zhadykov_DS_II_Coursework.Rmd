@@ -1,6 +1,6 @@
 ---
 title: "Coursework - Data Science II"
-author: "Name(s), Student ID(s)"
+author: "Omar Zhadykov, 220220503"
 output:
   html_notebook:
     fig_width: 10
@@ -46,9 +46,15 @@ setwd(dirname(getActiveDocumentContext()$path))
 
 # Introduction
 
-- Identify and formulate a regression **or** a classification problem of interest to you that calls for a data-driven answer. You can start with your domain-specific interests or by looking for an interesting dataset. 
-- Aim for at least 5 input variables.
-- Explain your variables briefly
+This coursework focuses on housing prices, with the main objective being to predict the price of a property based on various inputs. The inputs include features such as the area, the number and types of rooms, and additional factors like the availability of a main road, hot water heating, and more.
+
+The dependent variable is the price, as it is the primary concern for most people searching for a house. The goal of this work is to predict the price based on diverse inputs, which consist of mixed data types, such as:
+
+  - Numerical values
+  - Text-based responses like "yes" or "no"
+  - Categories for furnishing status, including "furnished," "semi-furnished," or "non-furnished."
+
+This project addresses a regression problem because the objective is to predict a numeric value—in this case, the price of the property.
 
 # Description
 
@@ -56,12 +62,324 @@ setwd(dirname(getActiveDocumentContext()$path))
 - Extensive data collection and preparation yields extra credit but is not mandatory for this coursework. 
 - Explore the data via descriptive statistics and visualization.
 
+### Collection
+
+Here I would like to collect, prepare, and explore my data. First thing is to import the data set.
+
+```{r}
+dt_houses <- fread(file = "./data/Regression_set.csv")
+```
+
+<br>
+
+I would like to check, if i have some nullish data in my dataset. I think it is a good idea to go through all rows and colums and check, if there is a NA. I want to check it with built-in function in R *complete.cases(data_table)*. This function returns TRUE or FALSE if row contains a NA value.
+
+```{r}
+nas <- dt_houses[!complete.cases(dt_houses)]
+nas
+```
+
+That looks great. Now we can move on to exploration. But before I start, It is crucial to install all needed libraries.
+
+```{r}
+library(data.table)
+library(ggcorrplot)
+library(ggExtra)
+library(ggplot2)
+library(ggridges)
+library(ggsci)
+library(ggthemes)
+library(RColorBrewer)
+library(svglite)
+library(viridis)
+library(scales)
+library(rpart)
+library(rpart.plot)
+```
+
+### Exploration
+
+I found some helpful functions in R, so we could have a look on our data. We will start with a structure, than we will get some statistic data and take a *head()* of the data
+
+```{r}
+str(dt_houses)
+```
+<br>
+Statistic data:
+```{r}
+summary(dt_houses[, .(price, area, bedrooms, bathrooms, stories, parking)])
+```
+
+<br>
+and this is a sample of dataset:
+
+```{r}
+head(dt_houses)
+```
+
+I would like to start from density of a main values, which are from my domain knowledge are important in price of the properties
+
+Price density: 
+
+```{r}
+ggplot(data = dt_houses, aes(x = price)) + 
+  geom_density(fill="#f1b147", color="#f1b147", alpha=0.25) + 
+  labs(
+    x = 'Price',
+    y = 'Density'
+  ) +
+  geom_vline(xintercept = mean(dt_houses$price), linetype="dashed") + 
+  scale_x_continuous(labels = label_number(scale = 1e-6, suffix = "M")) + 
+  theme_minimal() + 
+  theme(axis.line = element_line(color = "#000000"))
+```
+This density plot visualizes the distribution of house prices, showing that most houses are priced around 4-5 million, with a right-skewed distribution (some higher-priced houses pulling the mean up). The dashed vertical line represents the mean price (~5M). The plot highlights that while most houses fall within a moderate price range, some expensive properties extend beyond 10M.
+
+Area density:
+
+```{r}
+ggplot(data = dt_houses, aes(x = area)) + 
+  geom_density(fill="#f1b147", color="#f1b147", alpha=0.25) + 
+  labs(
+    x = 'Price',
+    y = 'Density'
+  ) +
+  theme_minimal() + 
+  theme(axis.line = element_line(color = "#000000"))
+```
+The area density plot looks similar to price density plot and can also make sense, because if house has a bigger area, the higher cost is quite expected. This plot shows that most houses are having area in range ~3000-5000. But some properties have area more than 12000.
+
+<br>
+
+Next plot will visualize the distribution of price depending on area. 
+
+```{r}
+ggplot() + 
+  geom_point(data = dt_houses, aes(x = area, y = price, color = parking)) +
+  scale_y_continuous(labels = label_number(scale = 1e-6, suffix = "M")) + 
+  theme_minimal() + 
+  theme(axis.line = element_line(color = "#000000"))
+```
+
+This scatter plot visualizes the relationship between house area (x-axis) and price (y-axis), with color indicating the number of parking spaces. It shows a positive correlation between area and price—larger houses tend to be more expensive. However, there is some variability, as some large houses have relatively lower prices. The color gradient suggests that houses with more parking spaces (lighter blue) tend to be higher in price and larger in area.
+
+The next plot, which I am going to do is a boxplot and I want to use bedrooms as a factor variable on x axis and price on y-axis, to get an overall understanding, how amount of bedrooms affect price.
+
+```{r}
+ggplot(data = dt_houses, aes(x = factor(bedrooms), y = price)) +
+  geom_boxplot() + 
+  theme_minimal() 
+```
+
+Boxplot shows, that on average, houses with more bedrooms have higher prices, but around 4-6 bedrooms, 1 quantile stagnates, and so does median price. There are some outliers, but not too much.
+
+It is also interesting to take a look at distribution of bedrooms, so next plot would be a histogram, because I want to know, which amount of bedrooms is the most "popular" in the whole dataset.
+
+```{r}
+ggplot(data = dt_houses, aes(x = bedrooms)) + 
+  geom_histogram(fill="#2f9e44", color="#2f9e44", alpha=0.25) + 
+  geom_vline(xintercept = mean(dt_houses$bedrooms), linetype="dashed") + 
+  theme_minimal() + 
+  theme(axis.line = element_line(color = "#000000"))
+```
+mean of the bedrooms:
+```{r}
+mean(dt_houses$bedrooms)
+```
+
+From this visualization we can mention, that the most of the houses have 2, 3 or 4 rooms. 1, 5 and 6 rooms are not as popular in this dataset.
+
+Let's have a look at histogram of stories: 
+
+```{r}
+ggplot(data = dt_houses, aes(x = stories)) + 
+  geom_histogram(fill="#2f9e44", color="#2f9e44", alpha=0.25) + 
+  geom_vline(xintercept = mean(dt_houses$stories), linetype="dashed") + 
+  theme_minimal() + 
+  theme(axis.line = element_line(color = "#000000"))
+```
+
+```{r}
+mean(dt_houses$stories)
+```
+
+This plot shows that most popular amount of stories are 1 and 2. 3 and 4 makeing less than 100 houses together.
+
+Bathrooms are also interesting variable, so let's take a look at histogram and a Boxplot bathrooms and price:
+```{r}
+ggplot(data = dt_houses, aes(x = bathrooms)) + 
+  geom_histogram(fill="#2f9e44", color="#2f9e44", alpha=0.25) + 
+  geom_vline(xintercept = mean(dt_houses$bathrooms), linetype="dashed") + 
+  theme_minimal() + 
+  theme(axis.line = element_line(color = "#000000"))
+```
+
+
+```{r}
+ggplot(data = dt_houses, aes(x = factor(bathrooms), y = price)) +
+  geom_boxplot() + 
+  theme_minimal() 
+```
+
+here it is also almost obvious, that, if we have more bathrooms, price will be also up. Only one disadvantage, that in my dataset I do not have enough data about properties with 3 or 4 bathrooms, I have some on 3, but really luck on 4.
+
+Furnishing is also important, many people search for apartments with furniture, but furniture could be not in a best shape or buyer may do not like the style. So from my opinion, it is not as strong(in prediction), as for example area.
+
+How much real estate furnished or not:
+
+```{r}
+ggplot(data = dt_houses, aes(x = factor(furnishingstatus), fill = factor(furnishingstatus))) + 
+  geom_bar(color="#ced4da", alpha=0.25) + 
+  scale_fill_viridis_d(option = "D") + 
+  labs(title = "Bar Chart with Different Colors", 
+       x = "Furnishing Status", 
+       y = "Count") + 
+  theme_minimal() + 
+  theme(axis.line = element_line(color = "#000000"))
+```
+
+We can see, that most of the houses are semi-furnished. which is also logical, because when we sell a house or apartment, probably we would take in most of the cases the most valuable things for us and furniture included.
+
+Now, it would be great, to look at price and area distribution in differently furnished properties
+
+
+```{r}
+ggplot(data = dt_houses, aes(y = price, x = area)) + 
+  geom_point(data = dt_houses, aes(y = price, x = area, color = bedrooms)) +
+  geom_hline(yintercept = mean(dt_houses$price), linetype='dashed') + 
+  facet_grid(.~furnishingstatus) +
+  scale_y_continuous(labels = label_number(scale = 1e-6, suffix = "M")) +
+  scale_color_distiller(type = "seq", palette = "Greens") +
+  theme_minimal() + 
+  theme(axis.line = element_line(color = "#000000"))
+```
+
+Also, on average, you can notice, that unfurnished houses, are less expensive.
+
+We can also take a look on some pie charts:
+
+```{r}
+
+dt_mainroad_counts <- as.data.frame(table(dt_houses$mainroad)) #table() - creates frequency table
+colnames(dt_mainroad_counts) <- c("mainroad_status", "count")
+dt_mainroad_counts$percentage <- round(dt_mainroad_counts$count / sum(dt_mainroad_counts$count) * 100, 1)
+
+ggplot(data = dt_mainroad_counts, aes(x = "", y = count, fill = mainroad_status)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar("y", start = 0) +
+  geom_text(aes(label = paste0(percentage, "%")), 
+            position = position_stack(vjust = 0.5), color = "white", size = 4) +  
+  theme_void() +  
+  scale_fill_manual(values = c("#F1B147", "#47B1F1")) + 
+  labs(
+    title = "Distribution of Mainroad Status",
+    fill = "Mainroad Status"
+  )
+
+```
+
+Almost 86 percent of houses have main road, so maybe this won't be a strong predictor variable.
+
+
+```{r}
+
+dt_airconditioning_counts <- as.data.frame(table(dt_houses$airconditioning)) #table() - creates frequency table
+colnames(dt_airconditioning_counts) <- c("airconditioning_status", "count")
+dt_airconditioning_counts$percentage <- round(dt_airconditioning_counts$count / sum(dt_airconditioning_counts$count) * 100, 1)
+
+ggplot(data = dt_airconditioning_counts, aes(x = "", y = count, fill = airconditioning_status)) +
+  geom_bar(stat = "identity", width = 1, color = "white") +
+  coord_polar("y", start = 0) +
+  geom_text(aes(label = paste0(percentage, "%")), 
+            position = position_stack(vjust = 0.5), color = "white", size = 4) +  
+  theme_void() +  
+  scale_fill_manual(values = c("#F1B147", "#47B1F1")) + 
+  labs(
+    title = "Distribution of Airconditioning status",
+    fill = "Airconditioning Status"
+  )
+
+```
+
+Here 68.4 percent has airconditioning, but I do not know, how it will affect predictions.
+
+
+I think that would be enough exploration and we can start with models.
+
 
 # Models 1 & 2
-
-- Use at least two different models to investigate your regression or classification problem. Both models receive the same input variables.
-- If you tune your model/s for some metric, only use the final tuned version of your model in the comparison.
 - Evaluate and compare your models based on a reasonable evaluation metric of your choice. You must use the same metric for both models. Report both the training and the CV loss. 
+
+First, I would like to start pretty simple with linear model.
+
+I consider to take all variables to my model, because they all seem to be very important.
+
+## Linear model
+
+I will use lm function in R to find needed beta coefficients and create my model
+
+```{r}
+price_lm <- lm(formula = price ~ area + bedrooms + hotwaterheating + airconditioning + stories + mainroad + parking + furnishingstatus + bathrooms + guestroom + basement + prefarea, data = dt_houses)
+
+summary(price_lm)
+```
+
+We got 0.68 R-squared, which is not that bad for a model just made up. But that's not all, I will try to do better here, but first, another model.
+
+But I would like to measure performance of my models with RMSE, so I will calculate RMSE for linear model.
+
+```{r}
+price_lm_rmse <- mean(sqrt(abs(price_lm$residuals)))
+
+price_lm_rmse
+```
+
+## Tree Model
+
+I think this model could perform better, because there some variables which can affect this model not only linearly, but the other way, in this case tree model can show better performance.
+
+In this coursework will be used rpart to create a regression tree.
+
+```{r}
+prices_tree <- rpart(data = dt_houses, formula = price ~ area + bedrooms + hotwaterheating + airconditioning + stories + mainroad + parking + furnishingstatus + bathrooms + guestroom + basement + prefarea, method = 'anova')
+
+prp(prices_tree, digits = -3)
+```
+
+```{r}
+printcp(prices_tree)
+```
+
+Now after I have built with the help of rpart tree model based on my dataset, let us explore it:
+
+```{r}
+prices_tree
+```
+
+We can see, that we have 31 Nodes, I think for this kind of dataset it may be okay.
+
+Now it would be great to prune the tree, because I do not want my tree to overfit:
+
+```{r}
+plotcp(prices_tree)
+```
+This is complexity of this tree. We need the lowest complexity, to get as few leafs as possible to get the best performance, so that tree won't overfit the data.
+
+```{r}
+prices_tree_min_cp <- prices_tree$cptable[which.min(prices_tree$cptable[, "xerror"]), "CP"]
+model_tree <- prune(prices_tree, cp = prices_tree_min_cp )
+prp(prices_tree,digits = -3)
+```
+
+after we pruned the tree, let's calculate the RMSE for the tree model
+
+
+```{r}
+prices_tree_pred <- predict(prices_tree, dt_houses[, c("area","bathrooms", "bedrooms", "hotwaterheating", "airconditioning", "parking", "stories", "mainroad", "furnishingstatus", "guestroom", "basement", "prefarea")])
+prices_tree_rmse <- mean(sqrt(abs(dt_houses$price - prices_tree_pred)))
+
+prices_tree_rmse
+```
 
 # Ensemble 
 
@@ -93,34 +411,6 @@ setwd(dirname(getActiveDocumentContext()$path))
 
 ***
 
-# Instructions (remove)
-
-The previous part can be used as a template for your coursework. This part should be removed. 
-
-## Submission
-
-Hand in the entire coursework as one reproducible R notebook along with the dataset(s) you used. Your reader must be in a position to rerun all of your code and to reproduce all of your computations and plots. 
-
-Before your hand in your notebook: Run the entire script (without errors), hit *preview* to create the notebook and inspect it in your browser for any missing content/visual glitches. Zip up your notebook (html file) and your dataset, rename the ZIP file with your name and student ID and upload it to StudIP before the deadline.
-
-You may submit your coursework before the deadline and update/re-upload your submission as often as you wish until the deadline. I will consider the most recent file.
-
-## Organizational Issues
-
-You may work in groups of two. Both group members must be able to explain the entire work/codebase.
-
-The coursework is guided. You must set up at least two consultations: One to discuss your problem/dataset and another one week before the deadline at the latest. The consultations can be online or in person. If you require/desire more consultations, feel free to contact me or approach me after class.
-
-## Plagiarism
-
-You must be able to explain every code chunk in your script. You may use code from the course scripts and the assignments, i.e. build on your work throughout the semester. Previous submissions attest to the success of this strategy and examples are available online as a guide. 
-
-If you employ models or methods not covered in this course, be prepared to be quizzed on them. Failure to explain your code or outside material in the oral exam will result in a fail in both the coursework and the oral exam.
-
-## Grading
-
-
-The coursework should reflect your ability to aptly use the covered models in R. Explain your findings in the text that accompanies your code. The predictive performance of your model is not graded but your ability to inquire into your data in R.
 
 
 
