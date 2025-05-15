@@ -95,6 +95,7 @@ library(viridis)
 library(scales)
 library(rpart)
 library(rpart.plot)
+library(factoextra)
 ```
 
 ### Exploration
@@ -402,6 +403,57 @@ prices_tree_rmse
 
 - Run a PCA on your input variables and discuss the scope for dimensionality reduction in your dataset.
 - Rerun the previous 4 models on all PCs or on a reduced number of PCs.
+
+### Calculating PCs
+
+Before I start working with PCA, this is important to normalize the data, so that measurement scale will not affect PCs.
+
+```{r}
+dt_pca <- data.table(scale(dt_houses[,c("area", "bedrooms", "bathrooms", "stories", "parking")]))
+```
+
+Now I want to run my PCA with help of prcomp and get the summary, to dive in to Data.
+
+```{r}
+dt_houses_pca <- prcomp(dt_pca)
+summary(dt_houses_pca)
+```
+That looks interesting, but I would like to plot it, to visualize it, so that it could be easier to understand.
+
+```{r}
+fviz_eig(dt_houses_pca, addlabels = TRUE) + 
+         theme(plot.title = element_text(hjust = 0.5))
+```
+
+From this plot it is obvious that all PC are useful and reducing dimensionality will not be beneficial, because last 3 PCs contribute approx. 12% each, which is a fair amount in this case. So I would like to use all PCs, because it is not always necessary to cut dimensionality and it depends on how much variablse we actually have, and how big of a contribution makes each PC. May be in this case "change of basis" will perform better.
+
+### Running models with PCs
+
+Now as I have calculated PCs, it is time to run models with new inputs.
+
+#### Linear model
+
+First we will start off with linear model.
+
+```{r}
+pc_table <- dt_houses_pca$x
+
+dt_houses_pc_table_for_lm <- data.frame(price = dt_houses$price, pc_table)
+
+price_lm_pca <- lm(formula = price ~ ., data = dt_houses_pc_table_for_lm)
+
+summary(price_lm_pca)
+```
+
+```{r}
+price_lm_pca_rmse <- mean(sqrt(abs(price_lm_pca$residuals)))
+
+price_lm_pca_rmse
+```
+
+
+Now, after PCA the results are worse and I think this is because there are fair amount of binary variables in this dataset and PCA could not capture all information, espesially information, which is captured in binary variables, such as "mainroad", "airconditioning" and so on.
+
 
 # Model Selection
 
