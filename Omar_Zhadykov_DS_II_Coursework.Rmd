@@ -46,15 +46,14 @@ setwd(dirname(getActiveDocumentContext()$path))
 
 # Introduction
 
-This coursework focuses on housing prices, with the main objective being to predict the price of a property based on various inputs. The inputs include features such as the area, the number and types of rooms, and additional factors like the availability of a main road, hot water heating, and more.
+In this course work I will explore dataset about students' performance based on their habits and lifestyle. I have chosen this dataset, because it is rich on different discrete, continious variables with a good range and I assume good variance, which will be very useful in Data Science 2 class. 
 
-The dependent variable is the price, as it is the primary concern for most people searching for a house. The goal of this work is to predict the price based on diverse inputs, which consist of mixed data types, such as:
-
-  - Numerical values
-  - Text-based responses like "yes" or "no"
-  - Categories for furnishing status, including "furnished," "semi-furnished," or "non-furnished."
-
-This project addresses a regression problem because the objective is to predict a numeric value—in this case, the price of the property.
+This dataset consists of 16 columns which could be categorized into these groups:
+  - discrete variables (example: exercise frequency per week)
+  - continious variables (example: sleep quantity)
+  - categorical variables (example par time job, yes or no)
+  
+This is regression problem, because I will try to predict the student's score for an exam, based on different variables.
 
 # Description
 
@@ -67,7 +66,7 @@ This project addresses a regression problem because the objective is to predict 
 Here I would like to collect, prepare, and explore my data. First thing is to import the data set.
 
 ```{r}
-dt_houses <- fread(file = "./data/Regression_set.csv")
+dt_students <- fread(file = "./data/student_habits_performance.csv")
 ```
 
 <br>
@@ -75,7 +74,7 @@ dt_houses <- fread(file = "./data/Regression_set.csv")
 I would like to check, if i have some nullish data in my dataset. I think it is a good idea to go through all rows and colums and check, if there is a NA. I want to check it with built-in function in R *complete.cases(data_table)*. This function returns TRUE or FALSE if row contains a NA value.
 
 ```{r}
-nas <- dt_houses[!complete.cases(dt_houses)]
+nas <- dt_students[!complete.cases(dt_students)]
 nas
 ```
 
@@ -103,38 +102,38 @@ library(factoextra)
 I found some helpful functions in R, so we could have a look on our data. We will start with a structure, than we will get some statistic data and take a *head()* of the data
 
 ```{r}
-str(dt_houses)
+str(dt_students)
 ```
 <br>
 Statistic data:
 ```{r}
-summary(dt_houses[, .(price, area, bedrooms, bathrooms, stories, parking)])
+summary(dt_students)
 ```
 
 <br>
 and this is a sample of dataset:
 
 ```{r}
-head(dt_houses)
+head(dt_students)
 ```
 
-I would like to start from density of a main values, which are from my domain knowledge are important in price of the properties
+I would like to start from density of a main values, which are from my domain knowledge are important for the best performance at the university.
 
-Price density: 
+ density: 
 
 ```{r}
-ggplot(data = dt_houses, aes(x = price)) + 
+ggplot(data = dt_students, aes(x = attendance_percentage)) + 
   geom_density(fill="#f1b147", color="#f1b147", alpha=0.25) + 
   labs(
     x = 'Price',
     y = 'Density'
   ) +
-  geom_vline(xintercept = mean(dt_houses$price), linetype="dashed") + 
-  scale_x_continuous(labels = label_number(scale = 1e-6, suffix = "M")) + 
+  geom_vline(xintercept = mean(dt_students$attendance_percentage), linetype="dashed") + 
   theme_minimal() + 
   theme(axis.line = element_line(color = "#000000"))
 ```
-This density plot visualizes the distribution of house prices, showing that most houses are priced around 4-5 million, with a right-skewed distribution (some higher-priced houses pulling the mean up). The dashed vertical line represents the mean price (~5M). The plot highlights that while most houses fall within a moderate price range, some expensive properties extend beyond 10M.
+This density plot visualizes the distribution of the attendance percentage, showing that most students attend classes at a rate of ~85% roughly, and this is a right-skewed distribution. The dashed vertical line represents the mean attendance percentage (~84-85%). The plot shows, that the majority of students are attending most of the classes.
+
 
 Area density:
 
@@ -454,7 +453,7 @@ price_lm_pca_rmse
 
 Now, after PCA the results are worse and I think this is because there are fair amount of binary variables in this dataset and PCA could not capture all information, espesially information, which is captured in binary variables, such as "mainroad", "airconditioning" and so on.
 
-
+ 
 # Model Selection
 
 - Compare all of your models based on their CV performance. You will have 8 options to consider: four models with and without PCA.
