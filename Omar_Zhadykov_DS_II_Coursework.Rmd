@@ -53,13 +53,9 @@ This dataset consists of 16 columns which could be categorized into these groups
   - continious variables (example: sleep quantity)
   - categorical variables (example par time job, yes or no)
   
-This is regression problem, because I will try to predict the student's score for an exam, based on different variables.
+This is regression problem, because I will try to predict student's score for an exam, based on different variables.
 
 # Description
-
-- Collect your dataset(s), explore your data for deficiencies such as missing data and formatting problems and prepare it for modelling. 
-- Extensive data collection and preparation yields extra credit but is not mandatory for this coursework. 
-- Explore the data via descriptive statistics and visualization.
 
 ### Collection
 
@@ -85,6 +81,7 @@ library(data.table)
 library(ggcorrplot)
 library(ggExtra)
 library(ggplot2)
+library(skimr)
 library(ggridges)
 library(ggsci)
 library(ggthemes)
@@ -107,11 +104,13 @@ str(dt_students)
 <br>
 Statistic data:
 ```{r}
-summary(dt_students)
+skim(dt_students)
 ```
 
+So we have 1000 rows, 16 columns, 7 char values and 9 numeric values. This is great start to get an overall opinion, so let's move.
+
 <br>
-and this is a sample of dataset:
+This is a sample of dataset:
 
 ```{r}
 head(dt_students)
@@ -119,13 +118,13 @@ head(dt_students)
 
 I would like to start from density of a main values, which are from my domain knowledge are important for the best performance at the university.
 
- density: 
+Attendance percentage density: 
 
 ```{r}
 ggplot(data = dt_students, aes(x = attendance_percentage)) + 
   geom_density(fill="#f1b147", color="#f1b147", alpha=0.25) + 
   labs(
-    x = 'Price',
+    x = 'Attendance',
     y = 'Density'
   ) +
   geom_vline(xintercept = mean(dt_students$attendance_percentage), linetype="dashed") + 
@@ -135,173 +134,116 @@ ggplot(data = dt_students, aes(x = attendance_percentage)) +
 This density plot visualizes the distribution of the attendance percentage, showing that most students attend classes at a rate of ~85% roughly, and this is a right-skewed distribution. The dashed vertical line represents the mean attendance percentage (~84-85%). The plot shows, that the majority of students are attending most of the classes.
 
 
-Area density:
+Age density:
 
 ```{r}
-ggplot(data = dt_houses, aes(x = area)) + 
+ggplot(data = dt_students, aes(x = age)) + 
   geom_density(fill="#f1b147", color="#f1b147", alpha=0.25) + 
   labs(
-    x = 'Price',
+    x = 'Age',
     y = 'Density'
   ) +
   theme_minimal() + 
   theme(axis.line = element_line(color = "#000000"))
 ```
-The area density plot looks similar to price density plot and can also make sense, because if house has a bigger area, the higher cost is quite expected. This plot shows that most houses are having area in range ~3000-5000. But some properties have area more than 12000.
+
+Age density plot looks pretty well distributed, so I think there is a better chance to learn good model from this dataset and generalize well.
+
 
 <br>
 
-Next plot will visualize the distribution of price depending on area. 
+Next plot will visualize the distribution of exam scores depending on attendance, and I would like to take a look at how possibly hours studied per day affect the exam score. 
 
 ```{r}
 ggplot() + 
-  geom_point(data = dt_houses, aes(x = area, y = price, color = parking)) +
-  scale_y_continuous(labels = label_number(scale = 1e-6, suffix = "M")) + 
+  geom_point(data = dt_students, aes(x = attendance_percentage, y = exam_score, color = study_hours_per_day)) +
   theme_minimal() + 
   theme(axis.line = element_line(color = "#000000"))
 ```
 
-This scatter plot visualizes the relationship between house area (x-axis) and price (y-axis), with color indicating the number of parking spaces. It shows a positive correlation between area and price—larger houses tend to be more expensive. However, there is some variability, as some large houses have relatively lower prices. The color gradient suggests that houses with more parking spaces (lighter blue) tend to be higher in price and larger in area.
+This scatter plot visualizes the relationship between attendance percentage (x-axis) and exam score (y-axis), with color indicating the amount of hours studied per day. It shows a positive correlation between high attendance, more study hours per day and exam score. I would say that on average students, who learn and attend classes more tend to get better scores. However, there is some variability, as some students with attendance more than 85% and average studying hours get worst scores.
 
-The next plot, which I am going to do is a boxplot and I want to use bedrooms as a factor variable on x axis and price on y-axis, to get an overall understanding, how amount of bedrooms affect price.
+The next plot, which I am going to do is a boxplot and I want to use diet quality as a factor variable on x axis and exam score on y-axis, to get an overall understanding, how the diet quality may affect the exam score.
 
 ```{r}
-ggplot(data = dt_houses, aes(x = factor(bedrooms), y = price)) +
+ggplot(data = dt_students, aes(x = factor(diet_quality), y = exam_score)) +
   geom_boxplot() + 
   theme_minimal() 
 ```
 
-Boxplot shows, that on average, houses with more bedrooms have higher prices, but around 4-6 bedrooms, 1 quantile stagnates, and so does median price. There are some outliers, but not too much.
+Boxplot shows that diet quality could be not a very valuable predictor variable. But, we can see, that poor diet has a little bit lower performance. From my personal opinion this difference is so statistically low, that it will not play a big role, but this is still interesting, that If person wants to get the best performance, it is also important to get "the best fuel".
 
-It is also interesting to take a look at distribution of bedrooms, so next plot would be a histogram, because I want to know, which amount of bedrooms is the most "popular" in the whole dataset.
+Another very important thing is sleep. I would like to know if there is visible relation between sleep, exercise frequency and exam score, and also sleep distribution of the students.
 
 ```{r}
-ggplot(data = dt_houses, aes(x = bedrooms)) + 
-  geom_histogram(fill="#2f9e44", color="#2f9e44", alpha=0.25) + 
-  geom_vline(xintercept = mean(dt_houses$bedrooms), linetype="dashed") + 
-  theme_minimal() + 
-  theme(axis.line = element_line(color = "#000000"))
-```
-mean of the bedrooms:
-```{r}
-mean(dt_houses$bedrooms)
+ggplot(data = dt_students, aes(x = sleep_hours, y = exam_score, colour = exercise_frequency)) +
+  geom_point() +
+  theme_minimal() +
+  theme(axis.line = element_line(color = "#000000")) +
+  scale_colour_gradient(low = "green", high = "darkgreen")
 ```
 
-From this visualization we can mention, that the most of the houses have 2, 3 or 4 rooms. 1, 5 and 6 rooms are not as popular in this dataset.
-
-Let's have a look at histogram of stories: 
-
 ```{r}
-ggplot(data = dt_houses, aes(x = stories)) + 
-  geom_histogram(fill="#2f9e44", color="#2f9e44", alpha=0.25) + 
-  geom_vline(xintercept = mean(dt_houses$stories), linetype="dashed") + 
+ggplot(data = dt_students, aes(x = sleep_hours)) + 
+  geom_density(fill="#f1b147", color="#f1b147", alpha=0.25) + 
+  labs(
+    x = 'Sleep',
+    y = 'Density'
+  ) +
   theme_minimal() + 
   theme(axis.line = element_line(color = "#000000"))
 ```
 
-```{r}
-mean(dt_houses$stories)
-```
+From this two plots it is clear that it is not very clear that sleep and sport play a very important role, because there are students who sleep, does sports and gets great scores, but also students, who does not sleep as much, and doesn't so much of a sport, but still gets good grades. Even some Students with 4.5 hours and 1 workaout a week are getting 100% exam score.
 
-This plot shows that most popular amount of stories are 1 and 2. 3 and 4 makeing less than 100 houses together.
 
-Bathrooms are also interesting variable, so let's take a look at histogram and a Boxplot bathrooms and price:
-```{r}
-ggplot(data = dt_houses, aes(x = bathrooms)) + 
-  geom_histogram(fill="#2f9e44", color="#2f9e44", alpha=0.25) + 
-  geom_vline(xintercept = mean(dt_houses$bathrooms), linetype="dashed") + 
-  theme_minimal() + 
-  theme(axis.line = element_line(color = "#000000"))
-```
-
+Let's create one more boxplot to look at average notes of students with and without part time jobs:
 
 ```{r}
-ggplot(data = dt_houses, aes(x = factor(bathrooms), y = price)) +
+ggplot(data = dt_students, aes(x = factor(part_time_job), y = exam_score)) +
   geom_boxplot() + 
   theme_minimal() 
 ```
 
-here it is also almost obvious, that, if we have more bathrooms, price will be also up. Only one disadvantage, that in my dataset I do not have enough data about properties with 3 or 4 bathrooms, I have some on 3, but really luck on 4.
+Boxplot shows some little difference, but as i thought it is roughly the same.
 
-Furnishing is also important, many people search for apartments with furniture, but furniture could be not in a best shape or buyer may do not like the style. So from my opinion, it is not as strong(in prediction), as for example area.
 
-How much real estate furnished or not:
+Now I would like to take a look at one more scatter plot with amount of social media hours with exam score and gender.
 
 ```{r}
-ggplot(data = dt_houses, aes(x = factor(furnishingstatus), fill = factor(furnishingstatus))) + 
-  geom_bar(color="#ced4da", alpha=0.25) + 
-  scale_fill_viridis_d(option = "D") + 
-  labs(title = "Bar Chart with Different Colors", 
-       x = "Furnishing Status", 
-       y = "Count") + 
+ggplot(data = dt_students, aes(x = social_media_hours, y = exam_score, colour = gender)) +
+  geom_point() +
+  theme_minimal() +
+  theme(axis.line = element_line(color = "#000000"))
+```
+
+I would say that I expected another result, but it seems, that on average amount of social media usage does not play a very big role, but it is also an slight average better to spend less time on social media to get better scores.
+
+One last plot will include mental health rating, which from my point of view is very important to perform well.
+
+```{r}
+ggplot(data = dt_students, aes(x = mental_health_rating, y = exam_score, colour = gender)) +
+  geom_point() +
+  theme_minimal() +
+  theme(axis.line = element_line(color = "#000000"))
+```
+
+This plot does not provide enough information, so let's take a look on a vertical barchart.
+
+```{r}
+ggplot(data = dt_students, aes(x = mental_health_rating)) + 
+  geom_histogram(fill="#2f9e44", color="#2f9e44", alpha=0.25) + 
+  geom_vline(xintercept = mean(dt_students$mental_health_rating), linetype="dashed") + 
   theme_minimal() + 
   theme(axis.line = element_line(color = "#000000"))
 ```
 
-We can see, that most of the houses are semi-furnished. which is also logical, because when we sell a house or apartment, probably we would take in most of the cases the most valuable things for us and furniture included.
-
-Now, it would be great, to look at price and area distribution in differently furnished properties
-
 
 ```{r}
-ggplot(data = dt_houses, aes(y = price, x = area)) + 
-  geom_point(data = dt_houses, aes(y = price, x = area, color = bedrooms)) +
-  geom_hline(yintercept = mean(dt_houses$price), linetype='dashed') + 
-  facet_grid(.~furnishingstatus) +
-  scale_y_continuous(labels = label_number(scale = 1e-6, suffix = "M")) +
-  scale_color_distiller(type = "seq", palette = "Greens") +
-  theme_minimal() + 
-  theme(axis.line = element_line(color = "#000000"))
+mean(dt_students$mental_health_rating)
 ```
 
-Also, on average, you can notice, that unfurnished houses, are less expensive.
-
-We can also take a look on some pie charts:
-
-```{r}
-
-dt_mainroad_counts <- as.data.frame(table(dt_houses$mainroad)) #table() - creates frequency table
-colnames(dt_mainroad_counts) <- c("mainroad_status", "count")
-dt_mainroad_counts$percentage <- round(dt_mainroad_counts$count / sum(dt_mainroad_counts$count) * 100, 1)
-
-ggplot(data = dt_mainroad_counts, aes(x = "", y = count, fill = mainroad_status)) +
-  geom_bar(stat = "identity", width = 1, color = "white") +
-  coord_polar("y", start = 0) +
-  geom_text(aes(label = paste0(percentage, "%")), 
-            position = position_stack(vjust = 0.5), color = "white", size = 4) +  
-  theme_void() +  
-  scale_fill_manual(values = c("#F1B147", "#47B1F1")) + 
-  labs(
-    title = "Distribution of Mainroad Status",
-    fill = "Mainroad Status"
-  )
-
-```
-
-Almost 86 percent of houses have main road, so maybe this won't be a strong predictor variable.
-
-
-```{r}
-
-dt_airconditioning_counts <- as.data.frame(table(dt_houses$airconditioning)) #table() - creates frequency table
-colnames(dt_airconditioning_counts) <- c("airconditioning_status", "count")
-dt_airconditioning_counts$percentage <- round(dt_airconditioning_counts$count / sum(dt_airconditioning_counts$count) * 100, 1)
-
-ggplot(data = dt_airconditioning_counts, aes(x = "", y = count, fill = airconditioning_status)) +
-  geom_bar(stat = "identity", width = 1, color = "white") +
-  coord_polar("y", start = 0) +
-  geom_text(aes(label = paste0(percentage, "%")), 
-            position = position_stack(vjust = 0.5), color = "white", size = 4) +  
-  theme_void() +  
-  scale_fill_manual(values = c("#F1B147", "#47B1F1")) + 
-  labs(
-    title = "Distribution of Airconditioning status",
-    fill = "Airconditioning Status"
-  )
-
-```
-
-Here 68.4 percent has airconditioning, but I do not know, how it will affect predictions.
+Okay, from the last 2 plots I could conclude, that mental health could possibly better results on average, but students can still perform well, while being in a "bad" mood.
 
 
 I think that would be enough exploration and we can start with models.
