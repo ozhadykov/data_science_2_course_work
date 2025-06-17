@@ -40,8 +40,11 @@ knitr::opts_chunk$set(dev = "svglite")
 
 # Put your dataset in the same folder as your R file. This code will set your working directory for this notebook to the folder where the R file is stored. This way I can rerun your code without modifications.
 
-library(rstudioapi)
-setwd(dirname(getActiveDocumentContext()$path))
+#library(rstudioapi)
+#setwd(dirname(getActiveDocumentContext()$path))
+
+library(here)
+setwd(here())
 ```
 
 # Introduction
@@ -54,8 +57,6 @@ This dataset consists of 16 columns which could be categorized into these groups
   - categorical variables (example par time job, yes or no)
   
 This is regression problem, because I will try to predict student's score for an exam, based on different variables.
-
-# Description
 
 ### Collection
 
@@ -86,6 +87,7 @@ library(ggridges)
 library(ggsci)
 library(ggthemes)
 library(RColorBrewer)
+library(caret)
 library(svglite)
 library(viridis)
 library(scales)
@@ -211,7 +213,7 @@ Boxplot shows some little difference, but as i thought it is roughly the same.
 Now I would like to take a look at one more scatter plot with amount of social media hours with exam score and gender.
 
 ```{r}
-ggplot(data = dt_students, aes(x = social_media_hours, y = exam_score, colour = gender)) +
+ggplot( data = dt_students, aes(x = social_media_hours, y = exam_score, colour = gender)) +
   geom_point() +
   theme_minimal() +
   theme(axis.line = element_line(color = "#000000"))
@@ -252,29 +254,73 @@ I think that would be enough exploration and we can start with models.
 # Models 1 & 2
 - Evaluate and compare your models based on a reasonable evaluation metric of your choice. You must use the same metric for both models. Report both the training and the CV loss. 
 
-First, I would like to start pretty simple with linear model.
+Now the interesting part! So before I start, I want to split my data to training and test datasets. I will use *CARET* for almost every operations, because it is convinient and smart.
 
-I consider to take all variables to my model, because they all seem to be very important.
+## Precomputing
+
+splitting my data:
+```{r}
+dt_train <- createDataPartition(
+  y = dt_students$exam_score,
+  p = 0.8,
+  list = FALSE
+)
+
+dt_students_train <- dt_students[dt_train,]
+dt_students_test <- dt_students[-dt_train,]
+```
+
 
 ## Linear model
 
-I will use lm function in R to find needed beta coefficients and create my model
+So now that we have splitted the data, we can start with Linear model. I would like to use ten-fold Cross validatian, as it from my personal
+research is a standard in data science, and repeat it 10 times.
 
 ```{r}
-price_lm <- lm(formula = price ~ area + bedrooms + hotwaterheating + airconditioning + stories + mainroad + parking + furnishingstatus + bathrooms + guestroom + basement + prefarea, data = dt_houses)
+train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
 
-summary(price_lm)
+lm_scores <- train(exam_score ~ .,
+                   data = dt_students[, -"student_id"],
+                   method = "lm",
+                   trControl = train_control,
+                   preProcess = c("center","scale"))
+
+summary(lm_scores)
 ```
 
-We got 0.68 R-squared, which is not that bad for a model just made up. But that's not all, I will try to do better here, but first, another model.
+R^2 of 0.9 looks great and now I would like to calculate MSE and then CV MSE.
 
-But I would like to measure performance of my models with RMSE, so I will calculate RMSE for linear model.
+Training MSE:
+```{r}
+scores_lm_train_predictions <- predict(lm_scores, newdata = dt_students_train)
+
+training_mse <- mean((dt_students_train$exam_score - scores_lm_train_predictions)^2)
+cat("Training MSE:", training_mse, "\n")
+```
+
+<br>
+We can pull RMSE from CV
 
 ```{r}
-price_lm_rmse <- mean(sqrt(abs(price_lm$residuals)))
-
-price_lm_rmse
+lm_scores$results
 ```
+<br>
+calculate MSE:
+```{r}
+cv_mse <- lm_scores$results$RMSE^2
+cat("Cross-Validation MSE:", cv_mse)
+```
+<br>
+
+and now I want to get MSE from a Test set:
+```{r}
+scores_lm_test_predictions <- predict(lm_scores, newdata = dt_students_test)
+
+test_mse <- mean((dt_students_test$exam_score - scores_lm_test_predictions)^2)
+cat("Test MSE:", test_mse, "\n")
+```
+
+
 
 ## Tree Model
 
@@ -283,19 +329,33 @@ I think this model could perform better, because there some variables which can 
 In this coursework will be used rpart to create a regression tree.
 
 ```{r}
-prices_tree <- rpart(data = dt_houses, formula = price ~ area + bedrooms + hotwaterheating + airconditioning + stories + mainroad + parking + furnishingstatus + bathrooms + guestroom + basement + prefarea, method = 'anova')
+score_tree <- rpart(data = dt_students,
+                     formula = exam_score ~ age + 
+                     gender + 
+                     study_hours_per_day +
+                     social_media_hours +
+                     netflix_hours +
+                     part_time_job +
+                     attendance_percentage +
+                     sleep_hours +
+                     diet_quality +
+                     exercise_frequency +
+                     parental_education_level +
+                     internet_quality +
+                     mental_health_rating +
+                     extracurricular_participation, method = 'anova')
 
-prp(prices_tree, digits = -3)
+prp(score_tree, digits = -3)
 ```
 
 ```{r}
-printcp(prices_tree)
+printcp(score_tree)
 ```
 
 Now after I have built with the help of rpart tree model based on my dataset, let us explore it:
 
 ```{r}
-prices_tree
+score_tree
 ```
 
 We can see, that we have 31 Nodes, I think for this kind of dataset it may be okay.
@@ -303,25 +363,44 @@ We can see, that we have 31 Nodes, I think for this kind of dataset it may be ok
 Now it would be great to prune the tree, because I do not want my tree to overfit:
 
 ```{r}
-plotcp(prices_tree)
+plotcp(score_tree)
 ```
 This is complexity of this tree. We need the lowest complexity, to get as few leafs as possible to get the best performance, so that tree won't overfit the data.
 
 ```{r}
-prices_tree_min_cp <- prices_tree$cptable[which.min(prices_tree$cptable[, "xerror"]), "CP"]
-model_tree <- prune(prices_tree, cp = prices_tree_min_cp )
-prp(prices_tree,digits = -3)
+score_tree_min_cp <- score_tree$cptable[which.min(score_tree$cptable[, "xerror"]), "CP"]
+model_tree <- prune(score_tree, cp = score_tree_min_cp )
+prp(score_tree,digits = -3)
 ```
 
 after we pruned the tree, let's calculate the RMSE for the tree model
 
 
 ```{r}
-prices_tree_pred <- predict(prices_tree, dt_houses[, c("area","bathrooms", "bedrooms", "hotwaterheating", "airconditioning", "parking", "stories", "mainroad", "furnishingstatus", "guestroom", "basement", "prefarea")])
-prices_tree_rmse <- mean(sqrt(abs(dt_houses$price - prices_tree_pred)))
+scores_tree_pred <- predict(score_tree, 
+                            dt_students[, c("age",
+                                            "gender", 
+                                            "study_hours_per_day", 
+                                            "social_media_hours", 
+                                            "netflix_hours", 
+                                            "part_time_job", 
+                                            "attendance_percentage", 
+                                            "sleep_hours", 
+                                            "diet_quality", 
+                                            "exercise_frequency", 
+                                            "parental_education_level", 
+                                            "internet_quality", 
+                                            "mental_health_rating", "extracurricular_participation")])
 
-prices_tree_rmse
+scores_tree_mse <- mean((abs(dt_students$exam_score - scores_tree_pred)^2))
+
+scores_tree_mse
 ```
+
+```{r}
+```
+
+
 
 # Ensemble 
 
@@ -350,20 +429,20 @@ prices_tree_rmse
 Before I start working with PCA, this is important to normalize the data, so that measurement scale will not affect PCs.
 
 ```{r}
-dt_pca <- data.table(scale(dt_houses[,c("area", "bedrooms", "bathrooms", "stories", "parking")]))
+#dt_pca <- data.table(scale(dt_houses[,c("area", "bedrooms", "bathrooms", "stories", "parking")]))
 ```
 
 Now I want to run my PCA with help of prcomp and get the summary, to dive in to Data.
 
 ```{r}
-dt_houses_pca <- prcomp(dt_pca)
-summary(dt_houses_pca)
+#dt_houses_pca <- prcomp(dt_pca)
+#summary(dt_houses_pca)
 ```
 That looks interesting, but I would like to plot it, to visualize it, so that it could be easier to understand.
 
 ```{r}
-fviz_eig(dt_houses_pca, addlabels = TRUE) + 
-         theme(plot.title = element_text(hjust = 0.5))
+#fviz_eig(dt_houses_pca, addlabels = TRUE) + 
+#         theme(plot.title = element_text(hjust = 0.5))
 ```
 
 From this plot it is obvious that all PC are useful and reducing dimensionality will not be beneficial, because last 3 PCs contribute approx. 12% each, which is a fair amount in this case. So I would like to use all PCs, because it is not always necessary to cut dimensionality and it depends on how much variablse we actually have, and how big of a contribution makes each PC. May be in this case "change of basis" will perform better.
@@ -377,19 +456,19 @@ Now as I have calculated PCs, it is time to run models with new inputs.
 First we will start off with linear model.
 
 ```{r}
-pc_table <- dt_houses_pca$x
+# pc_table <- dt_houses_pca$x
 
-dt_houses_pc_table_for_lm <- data.frame(price = dt_houses$price, pc_table)
+# dt_houses_pc_table_for_lm <- data.frame(price = dt_houses$price, pc_table)
 
-price_lm_pca <- lm(formula = price ~ ., data = dt_houses_pc_table_for_lm)
+# price_lm_pca <- lm(formula = price ~ ., data = dt_houses_pc_table_for_lm)
 
-summary(price_lm_pca)
+# summary(price_lm_pca)
 ```
 
 ```{r}
-price_lm_pca_rmse <- mean(sqrt(abs(price_lm_pca$residuals)))
+# price_lm_pca_rmse <- mean(sqrt(abs(price_lm_pca$residuals)))
 
-price_lm_pca_rmse
+# price_lm_pca_rmse
 ```
 
 
@@ -403,11 +482,3 @@ Now, after PCA the results are worse and I think this is because there are fair 
 - Estimate the expected loss of your best model on the test set.
 
 ***
-
-
-
-
-
-
-
-
