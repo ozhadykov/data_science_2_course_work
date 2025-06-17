@@ -260,6 +260,13 @@ Now the interesting part! So before I start, I want to split my data to training
 
 splitting my data:
 ```{r}
+dt_students$gender <- as.factor(dt_students$gender)
+dt_students$part_time_job <- as.factor(dt_students$part_time_job)
+dt_students$diet_quality <- as.factor(dt_students$diet_quality)
+dt_students$parental_education_level <- as.factor(dt_students$parental_education_level)
+dt_students$internet_quality <- as.factor(dt_students$internet_quality)
+dt_students$extracurricular_participation <- as.factor(dt_students$extracurricular_participation)
+
 dt_train <- createDataPartition(
   y = dt_students$exam_score,
   p = 0.8,
@@ -321,84 +328,57 @@ cat("Test MSE:", test_mse, "\n")
 ```
 
 
-
 ## Tree Model
 
 I think this model could perform better, because there some variables which can affect this model not only linearly, but the other way, in this case tree model can show better performance.
 
-In this coursework will be used rpart to create a regression tree.
+```{r}
+# defining train control again
+train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+
+# I will let caret to test 20 different cp values
+scores_tree <- train(
+  exam_score ~ .,
+  data = dt_students_train[, -"student_id"],
+  method = "rpart",
+  trControl = train_control,
+  tuneLength = 20,
+  preProcess = c("center", "scale")
+)
+
+# print the model
+print(scores_tree)
+```
+
+I want also find out which cp values were used, and which is chosen
 
 ```{r}
-score_tree <- rpart(data = dt_students,
-                     formula = exam_score ~ age + 
-                     gender + 
-                     study_hours_per_day +
-                     social_media_hours +
-                     netflix_hours +
-                     part_time_job +
-                     attendance_percentage +
-                     sleep_hours +
-                     diet_quality +
-                     exercise_frequency +
-                     parental_education_level +
-                     internet_quality +
-                     mental_health_rating +
-                     extracurricular_participation, method = 'anova')
-
-prp(score_tree, digits = -3)
+best_cp <- scores_tree$bestTune$cp
+cat("Best CP:", best_cp, "\n")
 ```
 
 ```{r}
-printcp(score_tree)
+final_scores_tree <- scores_tree$finalModel
+
+prp(final_scores_tree, type = 2, extra = 100, fallen.leaves = TRUE, main = "Final Pruned Decision Tree")
 ```
 
-Now after I have built with the help of rpart tree model based on my dataset, let us explore it:
+One great thing about caret is that it prunes the tree itself, only one thing I need to do is to set how many different *cp* should caret try. So now I can calculate MSE for training, CV and test dataset.
+
 
 ```{r}
-score_tree
+levels(dt_students_train$gender)
+# training MSE
+train_predictions_tree <- predict(final_scores_tree, newdata = dt_students_train[,-"student_id"])
+
+# Calculate Training MSE
+training_mse_tree <- mean((dt_students_train$exam_score - train_predictions_tree)^2)
+cat("Tree Model Training MSE:", training_mse_tree, "\n")
 ```
 
-We can see, that we have 31 Nodes, I think for this kind of dataset it may be okay.
 
-Now it would be great to prune the tree, because I do not want my tree to overfit:
-
-```{r}
-plotcp(score_tree)
-```
-This is complexity of this tree. We need the lowest complexity, to get as few leafs as possible to get the best performance, so that tree won't overfit the data.
-
-```{r}
-score_tree_min_cp <- score_tree$cptable[which.min(score_tree$cptable[, "xerror"]), "CP"]
-model_tree <- prune(score_tree, cp = score_tree_min_cp )
-prp(score_tree,digits = -3)
-```
 
 after we pruned the tree, let's calculate the RMSE for the tree model
-
-
-```{r}
-scores_tree_pred <- predict(score_tree, 
-                            dt_students[, c("age",
-                                            "gender", 
-                                            "study_hours_per_day", 
-                                            "social_media_hours", 
-                                            "netflix_hours", 
-                                            "part_time_job", 
-                                            "attendance_percentage", 
-                                            "sleep_hours", 
-                                            "diet_quality", 
-                                            "exercise_frequency", 
-                                            "parental_education_level", 
-                                            "internet_quality", 
-                                            "mental_health_rating", "extracurricular_participation")])
-
-scores_tree_mse <- mean((abs(dt_students$exam_score - scores_tree_pred)^2))
-
-scores_tree_mse
-```
-
-```{r}
-```
 
 
 
