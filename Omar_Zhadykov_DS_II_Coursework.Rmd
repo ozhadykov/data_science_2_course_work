@@ -258,7 +258,9 @@ Now the interesting part! So before I start, I want to split my data to training
 
 ## Precomputing
 
-splitting my data:
+splitting my data and creating factors:
+
+
 ```{r}
 dt_students$gender <- as.factor(dt_students$gender)
 dt_students$part_time_job <- as.factor(dt_students$part_time_job)
@@ -301,8 +303,8 @@ Training MSE:
 ```{r}
 scores_lm_train_predictions <- predict(lm_scores, newdata = dt_students_train)
 
-training_mse <- mean((dt_students_train$exam_score - scores_lm_train_predictions)^2)
-cat("Training MSE:", training_mse, "\n")
+training_lm_mse <- mean((dt_students_train$exam_score - scores_lm_train_predictions)^2)
+cat("Training MSE:", training_lm_mse, "\n")
 ```
 
 <br>
@@ -314,8 +316,8 @@ lm_scores$results
 <br>
 calculate MSE:
 ```{r}
-cv_mse <- lm_scores$results$RMSE^2
-cat("Cross-Validation MSE:", cv_mse)
+cv_lm_mse <- lm_scores$results$RMSE^2
+cat("Cross-Validation MSE:", cv_lm_mse)
 ```
 <br>
 
@@ -323,8 +325,8 @@ and now I want to get MSE from a Test set:
 ```{r}
 scores_lm_test_predictions <- predict(lm_scores, newdata = dt_students_test)
 
-test_mse <- mean((dt_students_test$exam_score - scores_lm_test_predictions)^2)
-cat("Test MSE:", test_mse, "\n")
+test_lm_mse <- mean((dt_students_test$exam_score - scores_lm_test_predictions)^2)
+cat("Test MSE:", test_lm_mse, "\n")
 ```
 
 
@@ -333,13 +335,19 @@ cat("Test MSE:", test_mse, "\n")
 I think this model could perform better, because there some variables which can affect this model not only linearly, but the other way, in this case tree model can show better performance.
 
 ```{r}
-# defining train control again
-train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+dt_students_train_copy <- copy(dt_students_train)
+X_train <- as.data.frame(dt_students_train_copy[, -c("student_id", "exam_score")])
+Y_train <- dt_students_train_copy$exam_score
+
+train_control <- trainControl(method = "repeatedcv", 
+                              number = 10, 
+                              repeats = 10,
+                              )
 
 # I will let caret to test 20 different cp values
 scores_tree <- train(
-  exam_score ~ .,
-  data = dt_students_train[, -"student_id"],
+  x = X_train,
+  y = Y_train,
   method = "rpart",
   trControl = train_control,
   tuneLength = 20,
@@ -366,19 +374,35 @@ prp(final_scores_tree, type = 2, extra = 100, fallen.leaves = TRUE, main = "Fina
 One great thing about caret is that it prunes the tree itself, only one thing I need to do is to set how many different *cp* should caret try. So now I can calculate MSE for training, CV and test dataset.
 
 
+So now I can calculate Trainig and CV loss:
+
 ```{r}
-levels(dt_students_train$gender)
 # training MSE
-train_predictions_tree <- predict(final_scores_tree, newdata = dt_students_train[,-"student_id"])
+train_predictions_tree <- predict(scores_tree, newdata = dt_students_train[,-"student_id"])
 
 # Calculate Training MSE
 training_mse_tree <- mean((dt_students_train$exam_score - train_predictions_tree)^2)
 cat("Tree Model Training MSE:", training_mse_tree, "\n")
 ```
 
+```{r}
+# Extract the RMSE from that row and square it to get MSE
+cv_rmse_tree <- scores_tree$results$RMSE[scores_tree$results$cp == best_cp]
+cv_mse_tree <- cv_rmse_tree^2
+cat("Tree Model Cross-Validation MSE:", cv_mse_tree, "\n")
+```
 
+And let's calculate MSE on a test set:
 
-after we pruned the tree, let's calculate the RMSE for the tree model
+```{r}
+# test MSE
+test_predictions_tree <- predict(scores_tree, newdata = dt_students_test[, -"student_id"])
+
+# calculate testing MSE
+testing_mse_tree <- mean((dt_students_test$exam_score - test_predictions_tree)^2)
+cat("Tree Model Testing MSE:", testing_mse_tree, "\n")
+```
+
 
 
 
