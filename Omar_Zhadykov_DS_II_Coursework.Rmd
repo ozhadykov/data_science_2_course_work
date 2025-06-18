@@ -45,6 +45,13 @@ knitr::opts_chunk$set(dev = "svglite")
 
 library(here)
 setwd(here())
+
+print_results <- function(train, cv, test) {
+  cat("Training MSE: ", train, "\n")
+  cat("CV Loss: ", cv, "\n")
+  cat("Test MSE: ", test)
+}
+
 ```
 
 # Introduction
@@ -252,7 +259,6 @@ I think that would be enough exploration and we can start with models.
 
 
 # Models 1 & 2
-- Evaluate and compare your models based on a reasonable evaluation metric of your choice. You must use the same metric for both models. Report both the training and the CV loss. 
 
 Now the interesting part! So before I start, I want to split my data to training and test datasets. I will use *CARET* for almost every operations, because it is convinient and smart.
 
@@ -381,15 +387,15 @@ So now I can calculate Trainig and CV loss:
 train_predictions_tree <- predict(scores_tree, newdata = dt_students_train[,-"student_id"])
 
 # Calculate Training MSE
-training_mse_tree <- mean((dt_students_train$exam_score - train_predictions_tree)^2)
-cat("Tree Model Training MSE:", training_mse_tree, "\n")
+training_tree_mse <- mean((dt_students_train$exam_score - train_predictions_tree)^2)
+cat("Tree Model Training MSE:", training_tree_mse, "\n")
 ```
 
 ```{r}
 # Extract the RMSE from that row and square it to get MSE
 cv_rmse_tree <- scores_tree$results$RMSE[scores_tree$results$cp == best_cp]
-cv_mse_tree <- cv_rmse_tree^2
-cat("Tree Model Cross-Validation MSE:", cv_mse_tree, "\n")
+cv_tree_mse <- cv_rmse_tree^2
+cat("Tree Model Cross-Validation MSE:", cv_tree_mse, "\n")
 ```
 
 And let's calculate MSE on a test set:
@@ -399,12 +405,27 @@ And let's calculate MSE on a test set:
 test_predictions_tree <- predict(scores_tree, newdata = dt_students_test[, -"student_id"])
 
 # calculate testing MSE
-testing_mse_tree <- mean((dt_students_test$exam_score - test_predictions_tree)^2)
-cat("Tree Model Testing MSE:", testing_mse_tree, "\n")
+test_tree_mse <- mean((dt_students_test$exam_score - test_predictions_tree)^2)
+cat("Tree Model Testing MSE:", test_tree_mse, "\n")
 ```
 
+## Comparing
 
+So after training and testing linear and decisions tree models, it is time to compare their performance.
 
+### Linear model performance
+```{r}
+print_results(training_lm_mse, cv_lm_mse, test_lm_mse)
+```
+<br>
+<br>
+
+### Tree model performance
+```{r}
+print_results(training_tree_mse, cv_tree_mse, test_tree_mse)
+```
+
+The linear model performs better than the tree model, and I suppose this is because my dataset is synthetic and was created for a regression problem. It is possible, therefore, that the linear model will perform best overall.
 
 # Ensemble 
 
@@ -412,6 +433,67 @@ cat("Tree Model Testing MSE:", testing_mse_tree, "\n")
 - Investigate the hyperparameter settings of your ensemble with regards to your evaluation metric. 
 - Report both the training and the CV loss. 
 - Select the best configurations of your ensemble model based on the same evaluation metric as before.
+
+Now it is time to upgrade tree to a random forest. I will be using caret for model creation and eveluation.
+
+## Preparation
+
+Before I start with random forest, I need to prepare my hyperparametrs before training a random forest. There are 2 main hyperparameters: 
+
+ - ntree, number of trees grown
+ - mtry, number of variables used
+ 
+Also I would like to test one more hyperparameter such as node size.
+
+```{r}
+# preparing the grid for caret
+
+# I will need exact same folds, to evaluate model's performace
+folds <- createFolds(dt_students_train[,exam_score], k = 10)
+
+# creating different pull of hyperparameters
+loop_grid <- expand.grid(ntrees = c(100,500,1000),
+                         nodesize = c(1,5,10))
+
+# and creating mtry hyperparameter
+dt_mtree <-  data.table("mtry"= 1:(ncol(dt_students_train)-1))
+rf_grid <- expand.grid(
+  mtry = dt_mtree$mtry
+)
+```
+
+Now, as I have my hyperparameters, it is time to try it in caret.
+
+```{r}
+# controll settings
+train_control_rf <- trainControl(method = "cv",
+                                 number = 10,
+                                 index = folds)
+
+# storing results
+results <- list()
+
+# looping through and trying all combinations
+for(i in 1:nrow(loop_grid)){
+  ntrees <- loop_grid[i,1]
+  nodesize <- loop_grid[i,2]
+  caret_rf <- train(exam_score ~ ., 
+                    data = dt_students_train[,-"student_id"],
+                    method = "rf",
+                    ntrees = ntrees,
+                    nodesize = nodesize,
+                    trControl = train_control_rf,
+                    tuneGrid = rf_grid)
+
+  results[[i]] <- caret_rf
+}
+
+names(results) <- paste("ntrees_", loop_grid$ntrees,
+                              "nodesize_", loop_grid$nodesize)
+
+summary(resamples(results))$statistics$RMSE
+```
+From this statistics, we can see that the best performance shows a random forest with *ntrees* of 1000 and nodesize of 1. 
 
 # Neural Network
 
