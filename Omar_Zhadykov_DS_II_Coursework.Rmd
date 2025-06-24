@@ -101,6 +101,7 @@ library(scales)
 library(rpart)
 library(rpart.plot)
 library(factoextra)
+library(keras3)
 ```
 
 ### Exploration
@@ -429,11 +430,6 @@ The linear model performs better than the tree model, and I suppose this is beca
 
 # Ensemble 
 
-- Repeat the analysis one ensemble method of your choice. 
-- Investigate the hyperparameter settings of your ensemble with regards to your evaluation metric. 
-- Report both the training and the CV loss. 
-- Select the best configurations of your ensemble model based on the same evaluation metric as before.
-
 Now it is time to upgrade tree to a random forest. I will be using caret for model creation and eveluation.
 
 ## Preparation
@@ -442,64 +438,67 @@ Before I start with random forest, I need to prepare my hyperparametrs before tr
 
  - ntree, number of trees grown
  - mtry, number of variables used
- 
-Also I would like to test one more hyperparameter such as node size.
 
 ```{r}
 # preparing the grid for caret
-
-# I will need exact same folds, to evaluate model's performace
-folds <- createFolds(dt_students_train[,exam_score], k = 10)
-
-# creating different pull of hyperparameters
-loop_grid <- expand.grid(ntrees = c(100,500,1000),
-                         nodesize = c(1,5,10))
-
-# and creating mtry hyperparameter
-dt_mtree <-  data.table("mtry"= 1:(ncol(dt_students_train)-1))
-rf_grid <- expand.grid(
-  mtry = dt_mtree$mtry
-)
+rf_grid <- data.table("mtry"=1:(ncol(dt_students_train)-1))
 ```
 
 Now, as I have my hyperparameters, it is time to try it in caret.
 
 ```{r}
 # controll settings
-train_control_rf <- trainControl(method = "cv",
-                                 number = 10,
-                                 index = folds)
+train_control_rf <- trainControl(method = "cv", number = 10)
 
-# storing results
-results <- list()
+rf_scores <- train(exam_score ~ ., data = dt_students_train[, -"student_id"],
+                   method="rf",
+                   ntrees=500,
+                   trControl = train_control_rf,
+                   search = "grid",
+                   tuneGrid = rf_grid)
 
-# looping through and trying all combinations
-for(i in 1:nrow(loop_grid)){
-  ntrees <- loop_grid[i,1]
-  nodesize <- loop_grid[i,2]
-  caret_rf <- train(exam_score ~ ., 
-                    data = dt_students_train[,-"student_id"],
-                    method = "rf",
-                    ntrees = ntrees,
-                    nodesize = nodesize,
-                    trControl = train_control_rf,
-                    tuneGrid = rf_grid)
-
-  results[[i]] <- caret_rf
-}
-
-names(results) <- paste("ntrees_", loop_grid$ntrees,
-                              "nodesize_", loop_grid$nodesize)
-
-summary(resamples(results))$statistics$RMSE
+rf_scores
 ```
-From this statistics, we can see that the best performance shows a random forest with *ntrees* of 1000 and nodesize of 1. 
+
+Okay, the best mtry value is 11, so I will use this model in my course work. Now I would like to calculate training MSE
+
+```{r}
+# calculating training MSE
+train_predictions_rf <- predict(rf_scores, newdata = dt_students_train[, -"student_id"])
+
+train_rf_mse <- mean((dt_students_train$exam_score - train_predictions_rf)^2)
+
+cat("Random Forest Training MSE:", train_rf_mse)
+```
+
+```{r}
+# Cross Validation MSE
+optimal_rf <- rf_scores$results[rf_scores$results$mtry == rf_scores$bestTune$mtry, ]
+cv_rf_mse <- optimal_rf$RMSE^2
+print(paste("Cross-validation RMSE for the optimal mtry (", rf_scores$bestTune$mtry, "):", cv_rf_mse))
+```
+
+```{r}
+# calculating test MSE
+test_predictions_rf <- predict(rf_scores, newdata = dt_students_test)
+
+test_rf_mse <- mean((dt_students_test$exam_score - test_predictions_rf)^2)
+
+cat("Random Forest Test MSE:", test_rf_mse)
+```
+
+
+So, after I trained 500 trees with hyperparameter mtry = 11 I got Test MSE 46.08, which is 40% better than regular tree. Next is NN up. 
 
 # Neural Network
 
 - Repeat the analysis with a neural network. 
 - Investigate three different configurations with regards to your evaluation metric and select the best configuration. Use the same evaluation metric as before.
 - Report both the training and the CV loss. 
+
+I found, that there is Keras3 for R, which is updated version of Keras.
+
+
 
 # Model Comparison
 
