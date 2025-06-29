@@ -67,6 +67,13 @@ This is regression problem, because I will try to predict student's score for an
 
 ### Collection
 
+And before I start, I would like to create a data table where, I will store performance of the models
+
+```{r}
+models_performance <- list()
+```
+
+
 Here I would like to collect, prepare, and explore my data. First thing is to import the data set.
 
 ```{r}
@@ -102,6 +109,14 @@ library(rpart)
 library(rpart.plot)
 library(factoextra)
 library(keras3)
+library(tensorflow)
+library(dplyr)
+library(reticulate)
+
+# this is for replication
+set.seed(42)
+tensorflow::tf$random$set_seed(42)
+py_run_string("import numpy as np; import random; random.seed(42); np.random.seed(42)")
 ```
 
 ### Exploration
@@ -295,7 +310,7 @@ research is a standard in data science, and repeat it 10 times.
 ```{r}
 train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
 
-lm_scores <- train(exam_score ~ .,
+lm_scores <- caret::train(exam_score ~ .,
                    data = dt_students[, -"student_id"],
                    method = "lm",
                    trControl = train_control,
@@ -310,8 +325,8 @@ Training MSE:
 ```{r}
 scores_lm_train_predictions <- predict(lm_scores, newdata = dt_students_train)
 
-training_lm_mse <- mean((dt_students_train$exam_score - scores_lm_train_predictions)^2)
-cat("Training MSE:", training_lm_mse, "\n")
+lm_train_mse <- mean((dt_students_train$exam_score - scores_lm_train_predictions)^2)
+cat("Training MSE:", lm_train_mse, "\n")
 ```
 
 <br>
@@ -323,8 +338,8 @@ lm_scores$results
 <br>
 calculate MSE:
 ```{r}
-cv_lm_mse <- lm_scores$results$RMSE^2
-cat("Cross-Validation MSE:", cv_lm_mse)
+lm_cv_mse <- lm_scores$results$RMSE^2
+cat("Cross-Validation MSE:", lm_cv_mse)
 ```
 <br>
 
@@ -332,8 +347,8 @@ and now I want to get MSE from a Test set:
 ```{r}
 scores_lm_test_predictions <- predict(lm_scores, newdata = dt_students_test)
 
-test_lm_mse <- mean((dt_students_test$exam_score - scores_lm_test_predictions)^2)
-cat("Test MSE:", test_lm_mse, "\n")
+lm_test_mse <- mean((dt_students_test$exam_score - scores_lm_test_predictions)^2)
+cat("Test MSE:", lm_test_mse, "\n")
 ```
 
 
@@ -352,7 +367,7 @@ train_control <- trainControl(method = "repeatedcv",
                               )
 
 # I will let caret to test 20 different cp values
-scores_tree <- train(
+scores_tree <- caret::train(
   x = X_train,
   y = Y_train,
   method = "rpart",
@@ -388,15 +403,15 @@ So now I can calculate Trainig and CV loss:
 train_predictions_tree <- predict(scores_tree, newdata = dt_students_train[,-"student_id"])
 
 # Calculate Training MSE
-training_tree_mse <- mean((dt_students_train$exam_score - train_predictions_tree)^2)
-cat("Tree Model Training MSE:", training_tree_mse, "\n")
+tree_train_mse <- mean((dt_students_train$exam_score - train_predictions_tree)^2)
+cat("Tree Model Training MSE:", tree_train_mse, "\n")
 ```
 
 ```{r}
 # Extract the RMSE from that row and square it to get MSE
 cv_rmse_tree <- scores_tree$results$RMSE[scores_tree$results$cp == best_cp]
-cv_tree_mse <- cv_rmse_tree^2
-cat("Tree Model Cross-Validation MSE:", cv_tree_mse, "\n")
+tree_cv_mse <- cv_rmse_tree^2
+cat("Tree Model Cross-Validation MSE:", tree_cv_mse, "\n")
 ```
 
 And let's calculate MSE on a test set:
@@ -406,8 +421,8 @@ And let's calculate MSE on a test set:
 test_predictions_tree <- predict(scores_tree, newdata = dt_students_test[, -"student_id"])
 
 # calculate testing MSE
-test_tree_mse <- mean((dt_students_test$exam_score - test_predictions_tree)^2)
-cat("Tree Model Testing MSE:", test_tree_mse, "\n")
+tree_test_mse <- mean((dt_students_test$exam_score - test_predictions_tree)^2)
+cat("Tree Model Testing MSE:", tree_test_mse, "\n")
 ```
 
 ## Comparing
@@ -416,14 +431,14 @@ So after training and testing linear and decisions tree models, it is time to co
 
 ### Linear model performance
 ```{r}
-print_results(training_lm_mse, cv_lm_mse, test_lm_mse)
+print_results(lm_train_mse, lm_cv_mse, lm_test_mse)
 ```
 <br>
 <br>
 
 ### Tree model performance
 ```{r}
-print_results(training_tree_mse, cv_tree_mse, test_tree_mse)
+print_results(tree_train_mse, tree_cv_mse, tree_train_mse)
 ```
 
 The linear model performs better than the tree model, and I suppose this is because my dataset is synthetic and was created for a regression problem. It is possible, therefore, that the linear model will perform best overall.
@@ -450,7 +465,7 @@ Now, as I have my hyperparameters, it is time to try it in caret.
 # controll settings
 train_control_rf <- trainControl(method = "cv", number = 10)
 
-rf_scores <- train(exam_score ~ ., data = dt_students_train[, -"student_id"],
+rf_scores <- caret::train(exam_score ~ ., data = dt_students_train[, -"student_id"],
                    method="rf",
                    ntrees=500,
                    trControl = train_control_rf,
@@ -466,25 +481,25 @@ Okay, the best mtry value is 11, so I will use this model in my course work. Now
 # calculating training MSE
 train_predictions_rf <- predict(rf_scores, newdata = dt_students_train[, -"student_id"])
 
-train_rf_mse <- mean((dt_students_train$exam_score - train_predictions_rf)^2)
+rf_train_mse <- mean((dt_students_train$exam_score - train_predictions_rf)^2)
 
-cat("Random Forest Training MSE:", train_rf_mse)
+cat("Random Forest Training MSE:", rf_train_mse)
 ```
 
 ```{r}
 # Cross Validation MSE
 optimal_rf <- rf_scores$results[rf_scores$results$mtry == rf_scores$bestTune$mtry, ]
-cv_rf_mse <- optimal_rf$RMSE^2
-print(paste("Cross-validation RMSE for the optimal mtry (", rf_scores$bestTune$mtry, "):", cv_rf_mse))
+rf_cv_mse <- optimal_rf$RMSE^2
+print(paste("Cross-validation MSE for the optimal mtry (", rf_scores$bestTune$mtry, "):", rf_cv_mse))
 ```
 
 ```{r}
 # calculating test MSE
 test_predictions_rf <- predict(rf_scores, newdata = dt_students_test)
 
-test_rf_mse <- mean((dt_students_test$exam_score - test_predictions_rf)^2)
+rf_test_mse <- mean((dt_students_test$exam_score - test_predictions_rf)^2)
 
-cat("Random Forest Test MSE:", test_rf_mse)
+cat("Random Forest Test MSE:", rf_test_mse)
 ```
 
 
@@ -496,8 +511,284 @@ So, after I trained 500 trees with hyperparameter mtry = 11 I got Test MSE 46.08
 - Investigate three different configurations with regards to your evaluation metric and select the best configuration. Use the same evaluation metric as before.
 - Report both the training and the CV loss. 
 
-I found, that there is Keras3 for R, which is updated version of Keras.
+I found, that there is Keras3 for R, which is updated version of Keras. So now I would like to start with Inputs for my NN.
 
+```{r}
+y_nn <- dt_students_train$exam_score
+X_df <- dt_students_train[,-c("student_id", "exam_score")]
+```
+
+Also it is important to normalize the data, so I will normalize the data, but from my research, Keras accepts (or TenserFlow under the hood only numeric variables, so all my factors, should be converted to numeric values, I will use one-hot encodeing for my factor variables)
+
+```{r}
+# scaling numeric 
+X_df_scaled <- X_df %>%
+  mutate_if(is.numeric, scale)
+
+# one-hot encoding for factors
+X_nn <- model.matrix(~ . -1, data = X_df_scaled)
+
+```
+
+
+## Configuration 1
+
+Here I want to strat very simple and use only 2 layers, first input will have 32 neurons and the second one only 1
+
+Now, after all Inputs are prepared and normilized, it is time to try DNN in R
+
+```{r}
+dnn_scores <- keras_model_sequential() %>%
+   layer_dense(32, activation = 'relu') %>%
+   layer_dense(1)
+
+dnn_scores %>% compile(
+  loss = 'MSE',
+  optimizer = "adam"
+)
+
+summary(dnn_scores)
+
+```
+
+So now model is created, now it is time to fit it.
+
+```{r}
+dnn_history <- dnn_scores %>% fit(
+  x=X_nn,
+  y=y_nn,
+  verbose = 0,
+  epochs = 100,
+  validation_split = 0.2
+)
+
+plot(dnn_history)
+```
+
+And collecting the results
+
+```{r}
+models_performance[['dnn_scores']] <- dnn_scores %>% evaluate(
+  X_nn,
+  y_nn,
+  verbose = 0
+)
+```
+
+
+Calculating training MSE:
+
+```{r}
+# predicting on training dataset
+dnn_train_predictions <- predict(dnn_scores, X_nn)
+
+# calculating MSE
+dnn_train_mse <- mean((dnn_train_predictions - dt_students_train$exam_score)^2)
+
+cat("Training MSE of DNN: ", dnn_train_mse)
+
+```
+
+
+Calculating test MSE:
+
+```{r}
+# first I need to prepare train dataset before passing it to DNN model
+
+# slicing useless cols
+X_test_df <- dt_students_test[,-c("student_id", "exam_score")]
+
+# scaling numeric 
+X_test_df_scaled <- X_test_df %>%
+  mutate_if(is.numeric, scale)
+
+# one-hot encoding for factors
+X_test_nn <- model.matrix(~ . -1, data = X_test_df_scaled)
+
+# predicting
+dnn_test_predictions <- predict(dnn_scores, X_test_nn)
+
+# calculating MSE
+dnn_test_mse <- mean((dnn_test_predictions - dt_students_test$exam_score)^2)
+
+cat("Testing MSE of DNN: ", dnn_test_mse)
+```
+
+## Configuration 2
+
+Here I want to strat very simple and use 3 layers, first input will have 32 neurons, second 16, and the second one only 1
+
+```{r}
+dnn_scores_2 <- keras_model_sequential() %>%
+   layer_dense(32, activation = 'relu') %>%
+   layer_dense(16, activation = 'relu') %>%
+   layer_dense(1)
+
+dnn_scores_2 %>% compile(
+  loss = 'MSE',
+  optimizer = "adam"
+)
+
+summary(dnn_scores)
+
+```
+
+fitting:
+
+```{r}
+dnn_history_2 <- dnn_scores_2 %>% fit(
+  x=X_nn,
+  y=y_nn,
+  verbose = 0,
+  epochs = 100,
+  validation_split = 0.2
+)
+
+plot(dnn_history_2)
+```
+
+And collecting the results
+
+```{r}
+models_performance[['dnn_scores_2']] <- dnn_scores_2 %>% evaluate(
+  X_nn,
+  y_nn,
+  verbose = 0
+)
+```
+
+
+Calculating training MSE:
+
+```{r}
+# predicting on training dataset
+dnn_2_train_predictions <- predict(dnn_scores_2, X_nn)
+
+# calculating MSE
+dnn_train_mse_2 <- mean((dnn_2_train_predictions - dt_students_train$exam_score)^2)
+
+cat("Training MSE of DNN: ", dnn_train_mse_2)
+
+```
+
+Calculating test MSE:
+
+```{r}
+# first I need to prepare train dataset before passing it to DNN model
+
+# slicing useless cols
+X_test_df <- dt_students_test[,-c("student_id", "exam_score")]
+
+# scaling numeric 
+X_test_df_scaled <- X_test_df %>%
+  mutate_if(is.numeric, scale)
+
+# one-hot encoding for factors
+X_test_nn <- model.matrix(~ . -1, data = X_test_df_scaled)
+
+# predicting
+dnn_test_predictions_2 <- predict(dnn_scores_2, X_test_nn)
+
+# calculating MSE
+dnn_test_mse_2 <- mean((dnn_test_predictions_2 - dt_students_test$exam_score)^2)
+
+cat("Testing MSE of DNN: ", dnn_test_mse_2)
+```
+
+
+## Configuration 3
+
+Here I want to use 4 layers, 64, 32, 16 and 1
+
+```{r}
+dnn_scores_3 <- keras_model_sequential() %>%
+  layer_dense(64, activation = 'relu') %>%
+  layer_dense(32, activation = 'relu') %>%
+  layer_dense(16, activation = 'relu') %>%
+  layer_dense(1)
+
+dnn_scores_3 %>% compile(
+  loss = 'MSE',
+  optimizer = "adam"
+)
+
+summary(dnn_scores_3)
+
+```
+
+So now model is created, now I will fit it.
+
+```{r}
+dnn_history_3 <- dnn_scores_3 %>% fit(
+  x=X_nn,
+  y=y_nn,
+  verbose = 0,
+  epochs = 100,
+  validation_split = 0.2
+)
+
+plot(dnn_history_3)
+```
+
+And collecting the results
+
+```{r}
+models_performance[['dnn_scores_3']] <- dnn_scores_3 %>% evaluate(
+  X_nn,
+  y_nn,
+  verbose = 0
+)
+```
+
+
+Calculating training MSE:
+
+```{r}
+# predicting on training dataset
+dnn_train_predictions_3 <- predict(dnn_scores_3, X_nn)
+
+# calculating MSE
+dnn_train_mse_3 <- mean((dnn_train_predictions_3 - dt_students_train$exam_score)^2)
+
+cat("Training MSE of DNN: ", dnn_train_mse_3)
+
+```
+
+
+Calculating test MSE:
+
+```{r}
+# first I need to prepare train dataset before passing it to DNN model
+
+# slicing useless cols
+X_test_df <- dt_students_test[,-c("student_id", "exam_score")]
+
+# scaling numeric 
+X_test_df_scaled <- X_test_df %>%
+  mutate_if(is.numeric, scale)
+
+# one-hot encoding for factors
+X_test_nn <- model.matrix(~ . -1, data = X_test_df_scaled)
+
+# predicting
+dnn_test_predictions_3 <- predict(dnn_scores_3, X_test_nn)
+
+# calculating MSE
+dnn_test_mse_3 <- mean((dnn_test_predictions_3 - dt_students_test$exam_score)^2)
+
+cat("Testing MSE of DNN: ", dnn_test_mse_3)
+```
+
+## Best DNN
+
+So now it is time to choose the DNN model, which performs the best:
+
+```{r}
+cat("Training performance:\n", "DNN_1: ", dnn_train_mse, "\n", "DNN_2: ", dnn_train_mse_2, "\n", "DNN_3: ", dnn_train_mse_3, "\n\n")
+cat("Testing performance:\n", "DNN_1: ", dnn_test_mse, "\n", "DNN_2: ", dnn_test_mse_2, "\n", "DNN_3: ", dnn_test_mse_3)
+```
+
+From all models, I think the largest one is slightly overfitting data and thus generalizes slightly worse than middle sized model in my case. So I will chose the second model to compare with others.
 
 
 # Model Comparison
