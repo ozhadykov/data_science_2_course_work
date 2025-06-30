@@ -110,13 +110,16 @@ library(rpart.plot)
 library(factoextra)
 library(keras3)
 library(tensorflow)
+library(rsample)
 library(dplyr)
 library(reticulate)
 
-# this is for replication
-set.seed(42)
-tensorflow::tf$random$set_seed(42)
-py_run_string("import numpy as np; import random; random.seed(42); np.random.seed(42)")
+set_seed_for_random_state <- function () {
+  # this is for replication
+  set.seed(42)
+  tensorflow::tf$random$set_seed(42)
+  py_run_string("import numpy as np; import random; random.seed(42); np.random.seed(42)")
+}
 ```
 
 ### Exploration
@@ -284,6 +287,8 @@ splitting my data and creating factors:
 
 
 ```{r}
+set_seed_for_random_state()
+
 dt_students$gender <- as.factor(dt_students$gender)
 dt_students$part_time_job <- as.factor(dt_students$part_time_job)
 dt_students$diet_quality <- as.factor(dt_students$diet_quality)
@@ -308,6 +313,8 @@ So now that we have splitted the data, we can start with Linear model. I would l
 research is a standard in data science, and repeat it 10 times.
 
 ```{r}
+set_seed_for_random_state()
+
 train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
 
 lm_scores <- caret::train(exam_score ~ .,
@@ -323,6 +330,8 @@ R^2 of 0.9 looks great and now I would like to calculate MSE and then CV MSE.
 
 Training MSE:
 ```{r}
+set_seed_for_random_state()
+
 scores_lm_train_predictions <- predict(lm_scores, newdata = dt_students_train)
 
 lm_train_mse <- mean((dt_students_train$exam_score - scores_lm_train_predictions)^2)
@@ -357,6 +366,8 @@ cat("Test MSE:", lm_test_mse, "\n")
 I think this model could perform better, because there some variables which can affect this model not only linearly, but the other way, in this case tree model can show better performance.
 
 ```{r}
+set_seed_for_random_state()
+
 dt_students_train_copy <- copy(dt_students_train)
 X_train <- as.data.frame(dt_students_train_copy[, -c("student_id", "exam_score")])
 Y_train <- dt_students_train_copy$exam_score
@@ -462,6 +473,8 @@ rf_grid <- data.table("mtry"=1:(ncol(dt_students_train)-1))
 Now, as I have my hyperparameters, it is time to try it in caret.
 
 ```{r}
+set_seed_for_random_state()
+
 # controll settings
 train_control_rf <- trainControl(method = "cv", number = 10)
 
@@ -521,6 +534,33 @@ X_df <- dt_students_train[,-c("student_id", "exam_score")]
 Also it is important to normalize the data, so I will normalize the data, but from my research, Keras accepts (or TenserFlow under the hood only numeric variables, so all my factors, should be converted to numeric values, I will use one-hot encodeing for my factor variables)
 
 ```{r}
+prepare_data_for_nn <- function (data_to_prepare) {
+  data_copy <- data_to_prepare
+  data_df_scaled <- data_copy[,-c("student_id", "exam_score")] %>%
+    mutate_if(is.numeric, scale)
+  
+  data_nn_one_hot_matrix <- model.matrix(~ . -1, data=data_df_scaled)
+  
+  data_nn_one_hot_dt <- as.data.table(data_nn_one_hot_matrix)
+  
+  data_nn_one_hot_dt$student_id <- data_to_prepare$student_id
+  data_nn_one_hot_dt$exam_score <- data_to_prepare$exam_score
+  
+  
+  return(as.data.table(data_nn_one_hot_dt))
+}
+
+split_K <- function(dt, folds){
+  dt$id <- ceiling(sample(1:nrow(dt), replace = FALSE, nrow(dt)) / 
+                     (nrow(dt) / folds))
+  return(dt)
+}
+```
+
+
+```{r}
+set_seed_for_random_state()
+
 # scaling numeric 
 X_df_scaled <- X_df %>%
   mutate_if(is.numeric, scale)
@@ -538,6 +578,8 @@ Here I want to strat very simple and use only 2 layers, first input will have 32
 Now, after all Inputs are prepared and normilized, it is time to try DNN in R
 
 ```{r}
+set_seed_for_random_state()
+
 dnn_scores <- keras_model_sequential() %>%
    layer_dense(32, activation = 'relu') %>%
    layer_dense(1)
@@ -613,6 +655,81 @@ dnn_test_mse <- mean((dnn_test_predictions - dt_students_test$exam_score)^2)
 
 cat("Testing MSE of DNN: ", dnn_test_mse)
 ```
+
+Calculating CV loss:
+
+As this is first place, where I will calculate CV loss for NN, I will create a reusable function, which will help me along:
+
+```{r}
+calculate_cv_loss_for_dnn <- function(data, layers = c(32, 1), epochs = 100, verbose = 0) {
+  set_seed_for_random_state()
+  
+  # prepare data
+  prepared_data <- prepare_data_for_nn(data)
+  folds         <- vfold_cv(prepared_data, v = 5)
+  cv_losses     <- c()
+
+  for (fold in folds$splits) {
+    set_seed_for_random_state()
+    train_data <- analysis(fold)
+    val_data <- assessment(fold)
+
+    # Drop target + ID
+    X_train <- train_data[, -c("student_id", "exam_score")]
+    X_val   <- val_data[, -c("student_id", "exam_score")]
+
+    # One-hot encoding
+    X_train_nn <- as.matrix(X_train)
+    X_val_nn   <- as.matrix(X_val)
+
+    y_train <- train_data$exam_score
+    y_val   <- val_data$exam_score
+
+    # Build DNN
+    dnn_model <- keras_model_sequential()
+    for (i in seq_along(layers)) {
+      units <- layers[i]
+      if (i == length(layers)) {
+        dnn_model <- dnn_model %>%
+          layer_dense(units = units)
+      } else {
+        dnn_model <- dnn_model %>%
+          layer_dense(units = units, activation = "relu")
+      }
+    }
+
+    dnn_model %>% compile(
+      loss = "MSE",
+      optimizer = "adam"
+    )
+
+    dnn_model %>% fit(
+      x = X_train_nn,
+      y = y_train,
+      epochs = epochs,
+      verbose = verbose
+    )
+
+    preds <- predict(dnn_model, X_val_nn)
+    fold_mse <- mean((preds - y_val)^2)
+    cv_losses <- c(cv_losses, fold_mse)
+  }
+
+  mean(cv_losses)
+}
+```
+
+
+In this function, I pass original data, then inside this data will be scaled, centered, and then I will use 5 folds to cross validate.
+
+Now, I will calculate CV loss for the configuration with 2 Layers:
+
+```{r}
+dnn_cv_mse_1 <- calculate_cv_loss_for_dnn(dt_students_train, c(32, 1))
+dnn_cv_mse_1
+```
+
+
 
 ## Configuration 2
 
@@ -693,6 +810,13 @@ dnn_test_predictions_2 <- predict(dnn_scores_2, X_test_nn)
 dnn_test_mse_2 <- mean((dnn_test_predictions_2 - dt_students_test$exam_score)^2)
 
 cat("Testing MSE of DNN: ", dnn_test_mse_2)
+```
+
+Calculating CV loss:
+
+```{r}
+dnn_cv_mse_2 <- calculate_cv_loss_for_dnn(dt_students_train, dnn_scores_2)
+dnn_cv_mse_2
 ```
 
 
