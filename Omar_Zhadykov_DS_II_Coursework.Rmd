@@ -4,7 +4,7 @@ author: "Omar Zhadykov, 220220503"
 output:
   html_notebook:
     fig_width: 10
-    theme: spacelab
+    theme: darkly
     toc: yes
     toc_depth: 3
     toc_float: yes
@@ -18,6 +18,9 @@ output:
     toc: yes
     toc_depth: 3
     toc_float: yes
+editor_options: 
+  markdown: 
+    wrap: 72
 ---
 
 <script>
@@ -56,25 +59,31 @@ print_results <- function(train, cv, test) {
 
 # Introduction
 
-In this course work I will explore dataset about students' performance based on their habits and lifestyle. I have chosen this dataset, because it is rich on different discrete, continious variables with a good range and I assume good variance, which will be very useful in Data Science 2 class. 
+In this course work I will explore dataset about students' performance
+based on their habits and lifestyle. I have chosen this dataset, because
+it is rich on different discrete, continious variables with a good range
+and I assume good variance, which will be very useful in Data Science 2
+class.
 
-This dataset consists of 16 columns which could be categorized into these groups:
-  - discrete variables (example: exercise frequency per week)
-  - continious variables (example: sleep quantity)
-  - categorical variables (example par time job, yes or no)
-  
-This is regression problem, because I will try to predict student's score for an exam, based on different variables.
+This dataset consists of 16 columns which could be categorized into
+these groups: - discrete variables (example: exercise frequency per
+week) - continious variables (example: sleep quantity) - categorical
+variables (example par time job, yes or no)
+
+This is regression problem, because I will try to predict student's
+score for an exam, based on different variables.
 
 ### Collection
 
-And before I start, I would like to create a data table where, I will store performance of the models
+And before I start, I would like to create a data table where, I will
+store performance of the models
 
 ```{r}
 models_performance <- list()
 ```
 
-
-Here I would like to collect, prepare, and explore my data. First thing is to import the data set.
+Here I would like to collect, prepare, and explore my data. First thing
+is to import the data set.
 
 ```{r}
 dt_students <- fread(file = "./data/student_habits_performance.csv")
@@ -82,14 +91,19 @@ dt_students <- fread(file = "./data/student_habits_performance.csv")
 
 <br>
 
-I would like to check, if i have some nullish data in my dataset. I think it is a good idea to go through all rows and colums and check, if there is a NA. I want to check it with built-in function in R *complete.cases(data_table)*. This function returns TRUE or FALSE if row contains a NA value.
+I would like to check, if i have some nullish data in my dataset. I
+think it is a good idea to go through all rows and colums and check, if
+there is a NA. I want to check it with built-in function in R
+*complete.cases(data_table)*. This function returns TRUE or FALSE if row
+contains a NA value.
 
 ```{r}
 nas <- dt_students[!complete.cases(dt_students)]
 nas
 ```
 
-That looks great. Now we can move on to exploration. But before I start, It is crucial to install all needed libraries.
+That looks great. Now we can move on to exploration. But before I start,
+It is crucial to install all needed libraries.
 
 ```{r}
 library(data.table)
@@ -124,29 +138,34 @@ set_seed_for_random_state <- function () {
 
 ### Exploration
 
-I found some helpful functions in R, so we could have a look on our data. We will start with a structure, than we will get some statistic data and take a *head()* of the data
+I found some helpful functions in R, so we could have a look on our
+data. We will start with a structure, than we will get some statistic
+data and take a *head()* of the data
 
 ```{r}
 str(dt_students)
 ```
-<br>
-Statistic data:
+
+<br> Statistic data:
+
 ```{r}
 skim(dt_students)
 ```
 
-So we have 1000 rows, 16 columns, 7 char values and 9 numeric values. This is great start to get an overall opinion, so let's move.
+So we have 1000 rows, 16 columns, 7 char values and 9 numeric values.
+This is great start to get an overall opinion, so let's move.
 
-<br>
-This is a sample of dataset:
+<br> This is a sample of dataset:
 
 ```{r}
 head(dt_students)
 ```
 
-I would like to start from density of a main values, which are from my domain knowledge are important for the best performance at the university.
+I would like to start from density of a main values, which are from my
+domain knowledge are important for the best performance at the
+university.
 
-Attendance percentage density: 
+Attendance percentage density:
 
 ```{r}
 ggplot(data = dt_students, aes(x = attendance_percentage)) + 
@@ -159,8 +178,12 @@ ggplot(data = dt_students, aes(x = attendance_percentage)) +
   theme_minimal() + 
   theme(axis.line = element_line(color = "#000000"))
 ```
-This density plot visualizes the distribution of the attendance percentage, showing that most students attend classes at a rate of ~85% roughly, and this is a right-skewed distribution. The dashed vertical line represents the mean attendance percentage (~84-85%). The plot shows, that the majority of students are attending most of the classes.
 
+This density plot visualizes the distribution of the attendance
+percentage, showing that most students attend classes at a rate of \~85%
+roughly, and this is a right-skewed distribution. The dashed vertical
+line represents the mean attendance percentage (\~84-85%). The plot
+shows, that the majority of students are attending most of the classes.
 
 Age density:
 
@@ -175,12 +198,14 @@ ggplot(data = dt_students, aes(x = age)) +
   theme(axis.line = element_line(color = "#000000"))
 ```
 
-Age density plot looks pretty well distributed, so I think there is a better chance to learn good model from this dataset and generalize well.
-
+Age density plot looks pretty well distributed, so I think there is a
+better chance to learn good model from this dataset and generalize well.
 
 <br>
 
-Next plot will visualize the distribution of exam scores depending on attendance, and I would like to take a look at how possibly hours studied per day affect the exam score. 
+Next plot will visualize the distribution of exam scores depending on
+attendance, and I would like to take a look at how possibly hours
+studied per day affect the exam score.
 
 ```{r}
 ggplot() + 
@@ -189,9 +214,18 @@ ggplot() +
   theme(axis.line = element_line(color = "#000000"))
 ```
 
-This scatter plot visualizes the relationship between attendance percentage (x-axis) and exam score (y-axis), with color indicating the amount of hours studied per day. It shows a positive correlation between high attendance, more study hours per day and exam score. I would say that on average students, who learn and attend classes more tend to get better scores. However, there is some variability, as some students with attendance more than 85% and average studying hours get worst scores.
+This scatter plot visualizes the relationship between attendance
+percentage (x-axis) and exam score (y-axis), with color indicating the
+amount of hours studied per day. It shows a positive correlation between
+high attendance, more study hours per day and exam score. I would say
+that on average students, who learn and attend classes more tend to get
+better scores. However, there is some variability, as some students with
+attendance more than 85% and average studying hours get worst scores.
 
-The next plot, which I am going to do is a boxplot and I want to use diet quality as a factor variable on x axis and exam score on y-axis, to get an overall understanding, how the diet quality may affect the exam score.
+The next plot, which I am going to do is a boxplot and I want to use
+diet quality as a factor variable on x axis and exam score on y-axis, to
+get an overall understanding, how the diet quality may affect the exam
+score.
 
 ```{r}
 ggplot(data = dt_students, aes(x = factor(diet_quality), y = exam_score)) +
@@ -199,9 +233,16 @@ ggplot(data = dt_students, aes(x = factor(diet_quality), y = exam_score)) +
   theme_minimal() 
 ```
 
-Boxplot shows that diet quality could be not a very valuable predictor variable. But, we can see, that poor diet has a little bit lower performance. From my personal opinion this difference is so statistically low, that it will not play a big role, but this is still interesting, that If person wants to get the best performance, it is also important to get "the best fuel".
+Boxplot shows that diet quality could be not a very valuable predictor
+variable. But, we can see, that poor diet has a little bit lower
+performance. From my personal opinion this difference is so
+statistically low, that it will not play a big role, but this is still
+interesting, that If person wants to get the best performance, it is
+also important to get "the best fuel".
 
-Another very important thing is sleep. I would like to know if there is visible relation between sleep, exercise frequency and exam score, and also sleep distribution of the students.
+Another very important thing is sleep. I would like to know if there is
+visible relation between sleep, exercise frequency and exam score, and
+also sleep distribution of the students.
 
 ```{r}
 ggplot(data = dt_students, aes(x = sleep_hours, y = exam_score, colour = exercise_frequency)) +
@@ -222,10 +263,15 @@ ggplot(data = dt_students, aes(x = sleep_hours)) +
   theme(axis.line = element_line(color = "#000000"))
 ```
 
-From this two plots it is clear that it is not very clear that sleep and sport play a very important role, because there are students who sleep, does sports and gets great scores, but also students, who does not sleep as much, and doesn't so much of a sport, but still gets good grades. Even some Students with 4.5 hours and 1 workaout a week are getting 100% exam score.
+From this two plots it is clear that it is not very clear that sleep and
+sport play a very important role, because there are students who sleep,
+does sports and gets great scores, but also students, who does not sleep
+as much, and doesn't so much of a sport, but still gets good grades.
+Even some Students with 4.5 hours and 1 workaout a week are getting 100%
+exam score.
 
-
-Let's create one more boxplot to look at average notes of students with and without part time jobs:
+Let's create one more boxplot to look at average notes of students with
+and without part time jobs:
 
 ```{r}
 ggplot(data = dt_students, aes(x = factor(part_time_job), y = exam_score)) +
@@ -233,10 +279,11 @@ ggplot(data = dt_students, aes(x = factor(part_time_job), y = exam_score)) +
   theme_minimal() 
 ```
 
-Boxplot shows some little difference, but as i thought it is roughly the same.
+Boxplot shows some little difference, but as i thought it is roughly the
+same.
 
-
-Now I would like to take a look at one more scatter plot with amount of social media hours with exam score and gender.
+Now I would like to take a look at one more scatter plot with amount of
+social media hours with exam score and gender.
 
 ```{r}
 ggplot( data = dt_students, aes(x = social_media_hours, y = exam_score, colour = gender)) +
@@ -245,9 +292,13 @@ ggplot( data = dt_students, aes(x = social_media_hours, y = exam_score, colour =
   theme(axis.line = element_line(color = "#000000"))
 ```
 
-I would say that I expected another result, but it seems, that on average amount of social media usage does not play a very big role, but it is also an slight average better to spend less time on social media to get better scores.
+I would say that I expected another result, but it seems, that on
+average amount of social media usage does not play a very big role, but
+it is also an slight average better to spend less time on social media
+to get better scores.
 
-One last plot will include mental health rating, which from my point of view is very important to perform well.
+One last plot will include mental health rating, which from my point of
+view is very important to perform well.
 
 ```{r}
 ggplot(data = dt_students, aes(x = mental_health_rating, y = exam_score, colour = gender)) +
@@ -256,7 +307,8 @@ ggplot(data = dt_students, aes(x = mental_health_rating, y = exam_score, colour 
   theme(axis.line = element_line(color = "#000000"))
 ```
 
-This plot does not provide enough information, so let's take a look on a vertical barchart.
+This plot does not provide enough information, so let's take a look on a
+vertical barchart.
 
 ```{r}
 ggplot(data = dt_students, aes(x = mental_health_rating)) + 
@@ -266,25 +318,25 @@ ggplot(data = dt_students, aes(x = mental_health_rating)) +
   theme(axis.line = element_line(color = "#000000"))
 ```
 
-
 ```{r}
 mean(dt_students$mental_health_rating)
 ```
 
-Okay, from the last 2 plots I could conclude, that mental health could possibly better results on average, but students can still perform well, while being in a "bad" mood.
-
+Okay, from the last 2 plots I could conclude, that mental health could
+possibly better results on average, but students can still perform well,
+while being in a "bad" mood.
 
 I think that would be enough exploration and we can start with models.
 
-
 # Models 1 & 2
 
-Now the interesting part! So before I start, I want to split my data to training and test datasets. I will use *CARET* for almost every operations, because it is convinient and smart.
+Now the interesting part! So before I start, I want to split my data to
+training and test datasets. I will use *CARET* for almost every
+operations, because it is convinient and smart.
 
 ## Precomputing
 
 splitting my data and creating factors:
-
 
 ```{r}
 set_seed_for_random_state()
@@ -306,10 +358,10 @@ dt_students_train <- dt_students[dt_train,]
 dt_students_test <- dt_students[-dt_train,]
 ```
 
-
 ## Linear model
 
-So now that we have splitted the data, we can start with Linear model. I would like to use ten-fold Cross validatian, as it from my personal
+So now that we have splitted the data, we can start with Linear model. I
+would like to use ten-fold Cross validatian, as it from my personal
 research is a standard in data science, and repeat it 10 times.
 
 ```{r}
@@ -326,9 +378,11 @@ lm_scores <- caret::train(exam_score ~ .,
 summary(lm_scores)
 ```
 
-R^2 of 0.9 looks great and now I would like to calculate MSE and then CV MSE.
+R\^2 of 0.9 looks great and now I would like to calculate MSE and then
+CV MSE.
 
 Training MSE:
+
 ```{r}
 set_seed_for_random_state()
 
@@ -338,21 +392,23 @@ lm_train_mse <- mean((dt_students_train$exam_score - scores_lm_train_predictions
 cat("Training MSE:", lm_train_mse, "\n")
 ```
 
-<br>
-We can pull RMSE from CV
+<br> We can pull RMSE from CV
 
 ```{r}
 lm_scores$results
 ```
-<br>
-calculate MSE:
+
+<br> calculate MSE:
+
 ```{r}
 lm_cv_mse <- lm_scores$results$RMSE^2
 cat("Cross-Validation MSE:", lm_cv_mse)
 ```
+
 <br>
 
 and now I want to get MSE from a Test set:
+
 ```{r}
 scores_lm_test_predictions <- predict(lm_scores, newdata = dt_students_test)
 
@@ -360,10 +416,11 @@ lm_test_mse <- mean((dt_students_test$exam_score - scores_lm_test_predictions)^2
 cat("Test MSE:", lm_test_mse, "\n")
 ```
 
-
 ## Tree Model
 
-I think this model could perform better, because there some variables which can affect this model not only linearly, but the other way, in this case tree model can show better performance.
+I think this model could perform better, because there some variables
+which can affect this model not only linearly, but the other way, in
+this case tree model can show better performance.
 
 ```{r}
 set_seed_for_random_state()
@@ -404,8 +461,9 @@ final_scores_tree <- scores_tree$finalModel
 prp(final_scores_tree, type = 2, extra = 100, fallen.leaves = TRUE, main = "Final Pruned Decision Tree")
 ```
 
-One great thing about caret is that it prunes the tree itself, only one thing I need to do is to set how many different *cp* should caret try. So now I can calculate MSE for training, CV and test dataset.
-
+One great thing about caret is that it prunes the tree itself, only one
+thing I need to do is to set how many different *cp* should caret try.
+So now I can calculate MSE for training, CV and test dataset.
 
 So now I can calculate Trainig and CV loss:
 
@@ -438,37 +496,73 @@ cat("Tree Model Testing MSE:", tree_test_mse, "\n")
 
 ## Comparing
 
-So after training and testing linear and decisions tree models, it is time to compare their performance.
+So after training and testing linear and decisions tree models, it is
+time to compare their performance.
 
 ### Linear model performance
+
 ```{r}
 print_results(lm_train_mse, lm_cv_mse, lm_test_mse)
 ```
-<br>
-<br>
+
+<br> <br>
 
 ### Tree model performance
+
 ```{r}
 print_results(tree_train_mse, tree_cv_mse, tree_train_mse)
 ```
 
-The linear model performs better than the tree model, and I suppose this is because my dataset is synthetic and was created for a regression problem. It is possible, therefore, that the linear model will perform best overall.
+```{r}
+values <- c(lm_test_mse, tree_test_mse)
+custom_labels <- c("Linear model", "Tree model")
 
-# Ensemble 
+data_for_plot <- data.frame(
+  ID = as.factor(custom_labels),
+  Value = values
+)
 
-Now it is time to upgrade tree to a random forest. I will be using caret for model creation and eveluation.
+ggplot(data_for_plot, aes(x = ID, y = Value)) +
+  geom_col(fill = "#69db7c") +
+  labs(
+    title = "Test Loss of 4 models",
+    x = "Model name",
+    y = "Loss"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.y = element_blank()
+  )
+```
+
+The linear model performs better than the tree model, and I suppose this
+is because my dataset is synthetic and was created for a regression
+problem. It is possible, therefore, that the linear model will perform
+best overall.
+
+# Ensemble
+
+Now it is time to upgrade tree to a random forest. I will be using caret
+for model creation and eveluation.
 
 ## Preparation
 
-Before I start with random forest, I need to prepare my hyperparametrs before training a random forest. There are 2 main hyperparameters: 
+Before I start with random forest, I need to prepare my hyperparametrs
+before training a random forest. There are 2 main hyperparameters:
 
- - ntree, number of trees grown
- - mtry, number of variables used
+-   ntree, number of trees grown
+-   mtry, number of variables used
 
 ```{r}
 # preparing the grid for caret
 rf_grid <- data.table("mtry"=1:(ncol(dt_students_train)-1))
 ```
+
+## Training
 
 Now, as I have my hyperparameters, it is time to try it in caret.
 
@@ -488,7 +582,10 @@ rf_scores <- caret::train(exam_score ~ ., data = dt_students_train[, -"student_i
 rf_scores
 ```
 
-Okay, the best mtry value is 11, so I will use this model in my course work. Now I would like to calculate training MSE
+## Evaluation
+
+Okay, the best mtry value is 11, so I will use this model in my course
+work. Now I would like to calculate training MSE
 
 ```{r}
 # calculating training MSE
@@ -515,23 +612,25 @@ rf_test_mse <- mean((dt_students_test$exam_score - test_predictions_rf)^2)
 cat("Random Forest Test MSE:", rf_test_mse)
 ```
 
-
-So, after I trained 500 trees with hyperparameter mtry = 11 I got Test MSE 46.08, which is 40% better than regular tree. Next is NN up. 
+So, after I trained 500 trees with hyperparameter mtry = 11 I got Test
+MSE 46.08, which is 40% better than regular tree. Next is NN up.
 
 # Neural Network
 
-- Repeat the analysis with a neural network. 
-- Investigate three different configurations with regards to your evaluation metric and select the best configuration. Use the same evaluation metric as before.
-- Report both the training and the CV loss. 
+I found, that there is Keras3 for R, which is updated version of Keras.
+So now I would like to start with Inputs for my NN.
 
-I found, that there is Keras3 for R, which is updated version of Keras. So now I would like to start with Inputs for my NN.
+## Preparation
 
 ```{r}
 y_nn <- dt_students_train$exam_score
 X_df <- dt_students_train[,-c("student_id", "exam_score")]
 ```
 
-Also it is important to normalize the data, so I will normalize the data, but from my research, Keras accepts (or TenserFlow under the hood only numeric variables, so all my factors, should be converted to numeric values, I will use one-hot encodeing for my factor variables)
+Also it is important to normalize the data, so I will normalize the
+data, but from my research, Keras accepts (or TenserFlow under the hood
+only numeric variables, so all my factors, should be converted to
+numeric values, I will use one-hot encodeing for my factor variables)
 
 ```{r}
 prepare_data_for_nn <- function (data_to_prepare) {
@@ -557,7 +656,6 @@ split_K <- function(dt, folds){
 }
 ```
 
-
 ```{r}
 set_seed_for_random_state()
 
@@ -570,12 +668,15 @@ X_nn <- model.matrix(~ . -1, data = X_df_scaled)
 
 ```
 
-
 ## Configuration 1
 
-Here I want to strat very simple and use only 2 layers, first input will have 32 neurons and the second one only 1
+### Training
 
-Now, after all Inputs are prepared and normilized, it is time to try DNN in R
+Here I want to strat very simple and use only 2 layers, first input will
+have 32 neurons and the second one only 1
+
+Now, after all Inputs are prepared and normilized, it is time to try DNN
+in R
 
 ```{r}
 set_seed_for_random_state()
@@ -593,9 +694,11 @@ summary(dnn_scores)
 
 ```
 
-So now model is created, now it is time to fit it.
+So now model is created, now it is time to fit it. I also will plot the loss with epochs of training for a better visualization:
 
 ```{r}
+set_seed_for_random_state()
+
 dnn_history <- dnn_scores %>% fit(
   x=X_nn,
   y=y_nn,
@@ -607,16 +710,7 @@ dnn_history <- dnn_scores %>% fit(
 plot(dnn_history)
 ```
 
-And collecting the results
-
-```{r}
-models_performance[['dnn_scores']] <- dnn_scores %>% evaluate(
-  X_nn,
-  y_nn,
-  verbose = 0
-)
-```
-
+### Evaluation
 
 Calculating training MSE:
 
@@ -630,7 +724,6 @@ dnn_train_mse <- mean((dnn_train_predictions - dt_students_train$exam_score)^2)
 cat("Training MSE of DNN: ", dnn_train_mse)
 
 ```
-
 
 Calculating test MSE:
 
@@ -658,7 +751,8 @@ cat("Testing MSE of DNN: ", dnn_test_mse)
 
 Calculating CV loss:
 
-As this is first place, where I will calculate CV loss for NN, I will create a reusable function, which will help me along:
+As this is first place, where I will calculate CV loss for NN, I will
+create a reusable function, which will help me along:
 
 ```{r}
 calculate_cv_loss_for_dnn <- function(data, layers = c(32, 1), epochs = 100, verbose = 0) {
@@ -719,8 +813,8 @@ calculate_cv_loss_for_dnn <- function(data, layers = c(32, 1), epochs = 100, ver
 }
 ```
 
-
-In this function, I pass original data, then inside this data will be scaled, centered, and then I will use 5 folds to cross validate.
+In this function, I pass original data, then inside this data will be
+scaled, centered, and then I will use 5 folds to cross validate.
 
 Now, I will calculate CV loss for the configuration with 2 Layers:
 
@@ -729,13 +823,18 @@ dnn_cv_mse_1 <- calculate_cv_loss_for_dnn(dt_students_train, c(32, 1))
 dnn_cv_mse_1
 ```
 
-
+NN with only 2 layers performs worse than a decision tree model. Decision Tree has a test loss of approx 74 and small NN has a test loss of a approx. 107.
 
 ## Configuration 2
 
-Here I want to strat very simple and use 3 layers, first input will have 32 neurons, second 16, and the second one only 1
+### Training
+
+Here I want to strat very simple and use 3 layers, first input will have
+32 neurons, second 16, and the second one only 1
 
 ```{r}
+set_seed_for_random_state()
+
 dnn_scores_2 <- keras_model_sequential() %>%
    layer_dense(32, activation = 'relu') %>%
    layer_dense(16, activation = 'relu') %>%
@@ -753,6 +852,8 @@ summary(dnn_scores)
 fitting:
 
 ```{r}
+set_seed_for_random_state()
+
 dnn_history_2 <- dnn_scores_2 %>% fit(
   x=X_nn,
   y=y_nn,
@@ -764,16 +865,8 @@ dnn_history_2 <- dnn_scores_2 %>% fit(
 plot(dnn_history_2)
 ```
 
-And collecting the results
 
-```{r}
-models_performance[['dnn_scores_2']] <- dnn_scores_2 %>% evaluate(
-  X_nn,
-  y_nn,
-  verbose = 0
-)
-```
-
+### Evaluation
 
 Calculating training MSE:
 
@@ -815,16 +908,21 @@ cat("Testing MSE of DNN: ", dnn_test_mse_2)
 Calculating CV loss:
 
 ```{r}
-dnn_cv_mse_2 <- calculate_cv_loss_for_dnn(dt_students_train, dnn_scores_2)
+dnn_cv_mse_2 <- calculate_cv_loss_for_dnn(dt_students_train, c(32, 16, 1))
 dnn_cv_mse_2
 ```
 
+This configuration performs much better than previous one and almost near to Linear model with ~ test MSE of ~28. Will more complex DNN perform better than.
+Linear model? I would like to say yes, because with one more additional layer, we got 50% boost of performance.
 
 ## Configuration 3
+
+### Training
 
 Here I want to use 4 layers, 64, 32, 16 and 1
 
 ```{r}
+set_seed_for_random_state()
 dnn_scores_3 <- keras_model_sequential() %>%
   layer_dense(64, activation = 'relu') %>%
   layer_dense(32, activation = 'relu') %>%
@@ -843,6 +941,8 @@ summary(dnn_scores_3)
 So now model is created, now I will fit it.
 
 ```{r}
+set_seed_for_random_state()
+
 dnn_history_3 <- dnn_scores_3 %>% fit(
   x=X_nn,
   y=y_nn,
@@ -854,16 +954,7 @@ dnn_history_3 <- dnn_scores_3 %>% fit(
 plot(dnn_history_3)
 ```
 
-And collecting the results
-
-```{r}
-models_performance[['dnn_scores_3']] <- dnn_scores_3 %>% evaluate(
-  X_nn,
-  y_nn,
-  verbose = 0
-)
-```
-
+### Evaluating
 
 Calculating training MSE:
 
@@ -877,7 +968,6 @@ dnn_train_mse_3 <- mean((dnn_train_predictions_3 - dt_students_train$exam_score)
 cat("Training MSE of DNN: ", dnn_train_mse_3)
 
 ```
-
 
 Calculating test MSE:
 
@@ -903,49 +993,132 @@ dnn_test_mse_3 <- mean((dnn_test_predictions_3 - dt_students_test$exam_score)^2)
 cat("Testing MSE of DNN: ", dnn_test_mse_3)
 ```
 
+Calculating CV loss:
+
+```{r}
+dnn_cv_mse_3 <- calculate_cv_loss_for_dnn(dt_students_train, c(64, 32, 16, 1))
+dnn_cv_mse_3
+```
+
 ## Best DNN
 
 So now it is time to choose the DNN model, which performs the best:
 
 ```{r}
-cat("Training performance:\n", "DNN_1: ", dnn_train_mse, "\n", "DNN_2: ", dnn_train_mse_2, "\n", "DNN_3: ", dnn_train_mse_3, "\n\n")
-cat("Testing performance:\n", "DNN_1: ", dnn_test_mse, "\n", "DNN_2: ", dnn_test_mse_2, "\n", "DNN_3: ", dnn_test_mse_3)
+cat("Training performance:\n", "DNN_1: ", dnn_train_mse, "\n", "DNN_2: ", dnn_train_mse_2, "\n", "DNN_3: ", dnn_train_mse_3, "\n\n",
+    "Testing performance:\n", "DNN_1: ", dnn_test_mse, "\n", "DNN_2: ", dnn_test_mse_2, "\n", "DNN_3: ", dnn_test_mse_3,  "\n\n",
+    "CV Loss:\n", "DNN_1: ", dnn_cv_mse_1, "\n", "DNN_2: ", dnn_cv_mse_2, "\n", "DNN_3: ", dnn_cv_mse_3)
 ```
 
-From all models, I think the largest one is slightly overfitting data and thus generalizes slightly worse than middle sized model in my case. So I will chose the second model to compare with others.
+From all models, I think the largest one is slightly overfitting data
+and thus generalizes slightly worse than middle sized model in my case.
+So I will chose the second model to compare with others. And here we can take a look on it:
+
+```{r}
+summary(dnn_scores_2)
+```
 
 
 # Model Comparison
 
-- Compare the performance of the 4 models.
+Let's compare all 4 models, which I have now. There are Linear model, tree, random forest, deep neural network. I want to compare them by test MSE and for that I will make small bar plot with their performance:
+
+```{r}
+values <- c(lm_test_mse, tree_test_mse, rf_test_mse, dnn_test_mse_2)
+custom_labels <- c("Linear model", "Tree model", "Random forest", "DNN")
+
+data_for_plot <- data.frame(
+  ID = as.factor(custom_labels),
+  Value = values
+)
+
+ggplot(data_for_plot, aes(x = ID, y = Value)) +
+  geom_col(fill = "#69db7c") +
+  labs(
+    title = "Test Loss of 4 models",
+    x = "Model name",
+    y = "Loss"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.y = element_blank()
+  )
+```
+Among the models evaluated, the linear model delivered the best performance, with DNN and Random Forest models yielding very comparable results. Notably, the decision tree model exhibited significantly higher errors, nearly double that of the linear model. This outcome is intriguing and suggests the underlying true function within this synthetic dataset might indeed be linear. But maybe DNN and Random forest will provide better results after performing PCA.
+
+One more thing, that is also interesting for me is training loss:
+
+```{r}
+values <- c(lm_train_mse, tree_train_mse, rf_train_mse, dnn_train_mse_2)
+custom_labels <- c("Linear model", "Tree model", "Random forest", "DNN")
+
+data_for_plot <- data.frame(
+  ID = as.factor(custom_labels),
+  Value = values
+)
+
+ggplot(data_for_plot, aes(x = ID, y = Value)) +
+  geom_col(fill = "#69db7c") +
+  labs(
+    title = "Test Loss of 4 models",
+    x = "Model name",
+    y = "Loss"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.title = element_text(size = 12),
+    axis.text = element_text(size = 10),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.y = element_blank()
+  )
+```
+
+The behavior of the Random Forest model is particularly surprising. While Random Forests are typically employed to mitigate variance, it notably exhibited the lowest training loss among all models, and by a significant margin
 
 # PCA
 
-- Run a PCA on your input variables and discuss the scope for dimensionality reduction in your dataset.
-- Rerun the previous 4 models on all PCs or on a reduced number of PCs.
+-   Run a PCA on your input variables and discuss the scope for
+    dimensionality reduction in your dataset.
+-   Rerun the previous 4 models on all PCs or on a reduced number of
+    PCs.
 
 ### Calculating PCs
 
-Before I start working with PCA, this is important to normalize the data, so that measurement scale will not affect PCs.
+Before I start working with PCA, this is important to normalize the
+data, so that measurement scale will not affect PCs.
 
 ```{r}
 #dt_pca <- data.table(scale(dt_houses[,c("area", "bedrooms", "bathrooms", "stories", "parking")]))
 ```
 
-Now I want to run my PCA with help of prcomp and get the summary, to dive in to Data.
+Now I want to run my PCA with help of prcomp and get the summary, to
+dive in to Data.
 
 ```{r}
 #dt_houses_pca <- prcomp(dt_pca)
 #summary(dt_houses_pca)
 ```
-That looks interesting, but I would like to plot it, to visualize it, so that it could be easier to understand.
+
+That looks interesting, but I would like to plot it, to visualize it, so
+that it could be easier to understand.
 
 ```{r}
 #fviz_eig(dt_houses_pca, addlabels = TRUE) + 
 #         theme(plot.title = element_text(hjust = 0.5))
 ```
 
-From this plot it is obvious that all PC are useful and reducing dimensionality will not be beneficial, because last 3 PCs contribute approx. 12% each, which is a fair amount in this case. So I would like to use all PCs, because it is not always necessary to cut dimensionality and it depends on how much variablse we actually have, and how big of a contribution makes each PC. May be in this case "change of basis" will perform better.
+From this plot it is obvious that all PC are useful and reducing
+dimensionality will not be beneficial, because last 3 PCs contribute
+approx. 12% each, which is a fair amount in this case. So I would like
+to use all PCs, because it is not always necessary to cut dimensionality
+and it depends on how much variablse we actually have, and how big of a
+contribution makes each PC. May be in this case "change of basis" will
+perform better.
 
 ### Running models with PCs
 
@@ -971,14 +1144,16 @@ First we will start off with linear model.
 # price_lm_pca_rmse
 ```
 
+Now, after PCA the results are worse and I think this is because there
+are fair amount of binary variables in this dataset and PCA could not
+capture all information, espesially information, which is captured in
+binary variables, such as "mainroad", "airconditioning" and so on.
 
-Now, after PCA the results are worse and I think this is because there are fair amount of binary variables in this dataset and PCA could not capture all information, espesially information, which is captured in binary variables, such as "mainroad", "airconditioning" and so on.
-
- 
 # Model Selection
 
-- Compare all of your models based on their CV performance. You will have 8 options to consider: four models with and without PCA.
-- Present the results in a table or chart.
-- Estimate the expected loss of your best model on the test set.
+-   Compare all of your models based on their CV performance. You will
+    have 8 options to consider: four models with and without PCA.
+-   Present the results in a table or chart.
+-   Estimate the expected loss of your best model on the test set.
 
-***
+------------------------------------------------------------------------
