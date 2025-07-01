@@ -75,13 +75,6 @@ score for an exam, based on different variables.
 
 ### Collection
 
-And before I start, I would like to create a data table where, I will
-store performance of the models
-
-```{r}
-models_performance <- list()
-```
-
 Here I would like to collect, prepare, and explore my data. First thing
 is to import the data set.
 
@@ -103,7 +96,7 @@ nas
 ```
 
 That looks great. Now we can move on to exploration. But before I start,
-It is crucial to install all needed libraries.
+It is crucial to install all needed libraries and create helper function, to make all models replicable.
 
 ```{r}
 library(data.table)
@@ -333,7 +326,7 @@ I think that would be enough exploration and we can start with models.
 
 Now the interesting part! So before I start, I want to split my data to
 training and test datasets. I will use *CARET* for almost every
-operations, because it is convinient and smart.
+operation, because it is convenient and smart.
 
 ## Precomputing
 
@@ -362,7 +355,7 @@ dt_students_test <- dt_students[-dt_train,]
 ## Linear model
 
 So now that we have splitted the data, we can start with Linear model. I
-would like to use ten-fold Cross validatian, as it from my personal
+would like to use ten-fold Cross validation, as it from my personal
 research is a standard in data science, and repeat it 10 times.
 
 ```{r}
@@ -549,7 +542,7 @@ best overall.
 # Ensemble
 
 Now it is time to upgrade tree to a random forest. I will be using caret
-for model creation and eveluation.
+for model creation and evaluation.
 
 ## Preparation
 
@@ -587,7 +580,7 @@ rf_scores
 
 ## Evaluation
 
-Okay, the best mtry value is 14, so I will use this model in my course
+Okay, the best mtry value is 13, so I will use this model in my course
 work. Now I would like to calculate training MSE
 
 ```{r}
@@ -615,8 +608,8 @@ rf_test_mse <- mean((dt_students_test$exam_score - test_predictions_rf)^2)
 cat("Random Forest Test MSE:", rf_test_mse)
 ```
 
-So, after I trained 500 trees with hyperparameter mtry = 11 I got Test
-MSE 46.08, which is 40% better than regular tree. Next is NN up.
+So, after I trained 500 trees with hyperparameter mtry = 13 I got Train
+MSE ~6, which is so much better than a decision tree, but the CV value is ~38.
 
 # Neural Network
 
@@ -654,7 +647,7 @@ y_nn_test <- dt_students_test$exam_score
 Here I want to strat very simple and use only 2 layers, first input will
 have 32 neurons and the second one only 1
 
-Now, after all Inputs are prepared and normilized, it is time to try DNN
+Now, after all Inputs are prepared and normalized, it is time to try DNN
 in R
 
 ```{r}
@@ -784,7 +777,7 @@ calculate_cv_loss_for_dnn <- function(data, layers = c(32, 1), epochs = 100, ver
 ```
 
 In this function, I pass original data, then inside this data will be
-scaled, centered, and then I will use 5 folds to cross validate.
+scaled, centered, and then I will use 10 folds to cross validate.
 
 Now, I will calculate CV loss for the configuration with 2 Layers:
 
@@ -793,13 +786,15 @@ dnn_cv_mse_1 <- calculate_cv_loss_for_dnn(dt_students_train, c(32, 1))
 dnn_cv_mse_1
 ```
 
-NN with only 2 layers performs worse than a decision tree model. Decision Tree has a test loss of approx 74 and small NN has a test loss of a approx. 107.
+NN with only 2 layers performs better than a decision tree model. Decision Tree has a CV loss of approx 76 and small NN has a test loss of a approx. 28.39.
 
 ## Configuration 2
 
+After evaluation of a simple configuration 1, I can try some more complex configurations.
+
 ### Training
 
-Here I want to strat very simple and use 3 layers, first input will have
+Here I want to use 3 layers, first input will have
 32 neurons, second 16, and the second one only 1
 
 ```{r}
@@ -818,7 +813,6 @@ dnn_scores_2 %>% compile(
 summary(dnn_scores)
 
 ```
-
 fitting:
 
 ```{r}
@@ -835,6 +829,7 @@ dnn_history_2 <- dnn_scores_2 %>% fit(
 plot(dnn_history_2)
 ```
 
+We can see that with more neurons, model trains faster, and needs less repetitions to get to the optimal parameters.
 
 ### Evaluation
 
@@ -869,11 +864,11 @@ Calculating CV loss:
 dnn_cv_mse_2 <- calculate_cv_loss_for_dnn(dt_students_train, c(32, 16, 1))
 dnn_cv_mse_2
 ```
-
-This configuration performs much better than previous one and almost near to Linear model with ~ test MSE of ~28. Will more complex DNN perform better than.
-Linear model? I would like to say yes, because with one more additional layer, we got 50% boost of performance.
+This configuration performs better on training dataset with MSE of ~24.9, but CV loss is almost the same, and simpler model shows slightly better performance.
 
 ## Configuration 3
+
+In the last NN configuration, I want to use 4 layers, and I could assume, that this model could overfitt my training dataset and generalize even worser than previous configuration, as second configuration had alredy shown slight generalization decrease.
 
 ### Training
 
@@ -946,6 +941,8 @@ dnn_cv_mse_3 <- calculate_cv_loss_for_dnn(dt_students_train, c(64, 32, 16, 1))
 dnn_cv_mse_3
 ```
 
+As I expected CV loss is bigger now, but by a little margin, so it is not a big problem, but it tends to generalize worse if the complexity of the NN grows.
+
 ## Best DNN
 
 So now it is time to choose the DNN model, which performs the best:
@@ -956,21 +953,21 @@ cat("Training performance:\n", "DNN_1: ", dnn_train_mse, "\n", "DNN_2: ", dnn_tr
     "CV Loss:\n", "DNN_1: ", dnn_cv_mse_1, "\n", "DNN_2: ", dnn_cv_mse_2, "\n", "DNN_3: ", dnn_cv_mse_3)
 ```
 
-From all models, I think the largest one is slightly overfitting data
-and thus generalizes slightly worse than middle sized model in my case.
-So I will chose the second model to compare with others. And here we can take a look on it:
+From all models, I think the largest one is slightly overfitting the data
+and thus generalizes slightly worse than smallest model in my case.
+So I will chose the first model to compare with others. And here we can take a look on it:
 
 ```{r}
-summary(dnn_scores_2)
+summary(dnn_scores)
 ```
 
 
 # Model Comparison
 
-Let's compare all 4 models, which I have now. There are Linear model, tree, random forest, deep neural network. I want to compare them by test MSE and for that I will make small bar plot with their performance:
+Let's compare all 4 models, which I have now. There are Linear model, tree, random forest, deep neural network. I want to compare them by CV loss and for that I will make small bar plot with their performance:
 
 ```{r}
-values <- c(lm_test_mse, tree_test_mse, rf_test_mse, dnn_test_mse_2)
+values <- c(lm_cv_mse, tree_cv_mse, rf_cv_mse, dnn_cv_mse_1)
 custom_labels <- c("Linear model", "Tree model", "Random forest", "DNN")
 
 data_for_plot <- data.frame(
@@ -980,26 +977,31 @@ data_for_plot <- data.frame(
 
 ggplot(data_for_plot, aes(x = ID, y = Value)) +
   geom_col(fill = "#69db7c") +
+  geom_text(aes(label = round(Value, 2)), 
+            vjust = -0.5,                  
+            size = 3) +                    
   labs(
-    title = "Test Loss of 4 models",
+    title = "Test Loss of Various Models", 
     x = "Model name",
-    y = "Loss"
+    y = "Loss (MSE)"
   ) +
   theme_minimal() +
   theme(
     plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
-    axis.title = element_text(size = 12),
-    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 10),
+    axis.text.x = element_text(size = 7, angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 7),
     panel.grid.major.x = element_blank(),
-    panel.grid.minor.y = element_blank()
+    panel.grid.minor.y = element_blank(),
+    plot.margin = unit(c(1, 1, 1, 1), "lines")
   )
 ```
-Among the models evaluated, the linear model delivered the best performance, with DNN and Random Forest models yielding very comparable results. Notably, the decision tree model exhibited significantly higher errors, nearly double that of the linear model. This outcome is intriguing and suggests the underlying true function within this synthetic dataset might indeed be linear. But maybe DNN and Random forest will provide better results after performing PCA.
+Among the models evaluated, the linear model delivered the best performance, with DNN and Random Forest models yielding very comparable results. Notably, the decision tree model exhibited significantly higher errors, nearly tripple that of the linear model. This outcome is intriguing and suggests the underlying true function within this synthetic dataset might indeed be linear. But maybe DNN and Random forest will provide better results after performing PCA.
 
 One more thing, that is also interesting for me is training loss:
 
 ```{r}
-values <- c(lm_train_mse, tree_train_mse, rf_train_mse, dnn_train_mse_2)
+values <- c(lm_train_mse, tree_train_mse, rf_train_mse, dnn_train_mse)
 custom_labels <- c("Linear model", "Tree model", "Random forest", "DNN")
 
 data_for_plot <- data.frame(
@@ -1009,28 +1011,35 @@ data_for_plot <- data.frame(
 
 ggplot(data_for_plot, aes(x = ID, y = Value)) +
   geom_col(fill = "#69db7c") +
+  geom_text(aes(label = round(Value, 2)), 
+            vjust = -0.5,                  
+            size = 3) +                    
   labs(
-    title = "Test Loss of 4 models",
+    title = "Test Loss of Various Models", 
     x = "Model name",
-    y = "Loss"
+    y = "Loss (MSE)"
   ) +
   theme_minimal() +
   theme(
     plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
-    axis.title = element_text(size = 12),
-    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 10),
+    axis.text.x = element_text(size = 7, angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 7),
     panel.grid.major.x = element_blank(),
-    panel.grid.minor.y = element_blank()
+    panel.grid.minor.y = element_blank(),
+    plot.margin = unit(c(1, 1, 1, 1), "lines")
   )
 ```
 
-The behavior of the Random Forest model is particularly surprising. While Random Forests are typically employed to mitigate variance, it notably exhibited the lowest training loss among all models, and by a significant margin
+The behavior of the Random Forest model is particularly surprising. While Random Forests are typically employed to mitigate variance, it notably exhibited the lowest training loss among all models, and by a significant margin.
 
 # PCA
 
+After very interesting investigation and comparement of 4 models, I would like to run PCA and compare CV loss from the all models again.
+
 ## Preparation
 
-As I used before the library recipies from tidymodels, I found it very convinient to work with this library, and also it provides PCA, so I will create new Recipie for a PCA part of the work.
+As I used before the library recipies from tidymodels, I found it very convenient to work with this library, and also it provides PCA, so I will create new Recipie for a PCA part of the work.
 
 ```{r}
 nn_pca_recipe <- recipe(exam_score ~ ., data = dt_students_train) %>%
