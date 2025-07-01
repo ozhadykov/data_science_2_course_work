@@ -14,7 +14,7 @@ output:
   pdf_document: default
   html_document:
     fig_width: 10
-    theme: spacelab
+    theme: darkly
     toc: yes
     toc_depth: 3
     toc_float: yes
@@ -120,6 +120,7 @@ library(svglite)
 library(viridis)
 library(scales)
 library(rpart)
+library(recipes)
 library(rpart.plot)
 library(factoextra)
 library(keras3)
@@ -370,7 +371,7 @@ set_seed_for_random_state()
 train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
 
 lm_scores <- caret::train(exam_score ~ .,
-                   data = dt_students[, -"student_id"],
+                   data = dt_students_train[, -"student_id"],
                    method = "lm",
                    trControl = train_control,
                    preProcess = c("center","scale"))
@@ -431,7 +432,7 @@ Y_train <- dt_students_train_copy$exam_score
 
 train_control <- trainControl(method = "repeatedcv", 
                               number = 10, 
-                              repeats = 10,
+                              repeats = 10
                               )
 
 # I will let caret to test 20 different cp values
@@ -440,8 +441,7 @@ scores_tree <- caret::train(
   y = Y_train,
   method = "rpart",
   trControl = train_control,
-  tuneLength = 20,
-  preProcess = c("center", "scale")
+  tuneLength = 20
 )
 
 # print the model
@@ -513,6 +513,8 @@ print_results(lm_train_mse, lm_cv_mse, lm_test_mse)
 print_results(tree_train_mse, tree_cv_mse, tree_train_mse)
 ```
 
+And I would like to create a small plot to represent visually the difference in performance:
+
 ```{r}
 values <- c(lm_test_mse, tree_test_mse)
 custom_labels <- c("Linear model", "Tree model")
@@ -569,7 +571,7 @@ Now, as I have my hyperparameters, it is time to try it in caret.
 ```{r}
 set_seed_for_random_state()
 
-# controll settings
+# control settings
 train_control_rf <- trainControl(method = "cv", number = 10)
 
 rf_scores <- caret::train(exam_score ~ ., data = dt_students_train[, -"student_id"],
@@ -577,14 +579,15 @@ rf_scores <- caret::train(exam_score ~ ., data = dt_students_train[, -"student_i
                    ntrees=500,
                    trControl = train_control_rf,
                    search = "grid",
-                   tuneGrid = rf_grid)
+                   tuneGrid = rf_grid,
+                   preProcess = c("center","scale"))
 
 rf_scores
 ```
 
 ## Evaluation
 
-Okay, the best mtry value is 11, so I will use this model in my course
+Okay, the best mtry value is 14, so I will use this model in my course
 work. Now I would like to calculate training MSE
 
 ```{r}
@@ -622,50 +625,26 @@ So now I would like to start with Inputs for my NN.
 
 ## Preparation
 
-```{r}
-y_nn <- dt_students_train$exam_score
-X_df <- dt_students_train[,-c("student_id", "exam_score")]
-```
-
 Also it is important to normalize the data, so I will normalize the
 data, but from my research, Keras accepts (or TenserFlow under the hood
 only numeric variables, so all my factors, should be converted to
 numeric values, I will use one-hot encodeing for my factor variables)
 
 ```{r}
-prepare_data_for_nn <- function (data_to_prepare) {
-  data_copy <- data_to_prepare
-  data_df_scaled <- data_copy[,-c("student_id", "exam_score")] %>%
-    mutate_if(is.numeric, scale)
-  
-  data_nn_one_hot_matrix <- model.matrix(~ . -1, data=data_df_scaled)
-  
-  data_nn_one_hot_dt <- as.data.table(data_nn_one_hot_matrix)
-  
-  data_nn_one_hot_dt$student_id <- data_to_prepare$student_id
-  data_nn_one_hot_dt$exam_score <- data_to_prepare$exam_score
-  
-  
-  return(as.data.table(data_nn_one_hot_dt))
-}
+nn_recipe <- recipe(exam_score ~ ., data = dt_students_train) %>%
+  update_role(student_id, new_role = "ID") %>% 
+  step_normalize(all_numeric_predictors()) %>% 
+  step_dummy(all_nominal_predictors(), one_hot = TRUE)
 
-split_K <- function(dt, folds){
-  dt$id <- ceiling(sample(1:nrow(dt), replace = FALSE, nrow(dt)) / 
-                     (nrow(dt) / folds))
-  return(dt)
-}
-```
+prepped_recipe <- prep(nn_recipe, training = dt_students_train)
+X_train_processed <- bake(prepped_recipe, new_data = dt_students_train)
 
-```{r}
-set_seed_for_random_state()
+X_nn_train_matrix <- as.matrix(X_train_processed %>% select(-exam_score, -student_id))
+y_nn_train <- dt_students_train$exam_score
 
-# scaling numeric 
-X_df_scaled <- X_df %>%
-  mutate_if(is.numeric, scale)
-
-# one-hot encoding for factors
-X_nn <- model.matrix(~ . -1, data = X_df_scaled)
-
+X_test_processed <- bake(prepped_recipe, new_data = dt_students_test)
+X_nn_test_matrix <- as.matrix(X_test_processed %>% select(-exam_score, -student_id))
+y_nn_test <- dt_students_test$exam_score
 ```
 
 ## Configuration 1
@@ -700,8 +679,8 @@ So now model is created, now it is time to fit it. I also will plot the loss wit
 set_seed_for_random_state()
 
 dnn_history <- dnn_scores %>% fit(
-  x=X_nn,
-  y=y_nn,
+  x=X_nn_train_matrix,
+  y=y_nn_train,
   verbose = 0,
   epochs = 100,
   validation_split = 0.2
@@ -716,7 +695,7 @@ Calculating training MSE:
 
 ```{r}
 # predicting on training dataset
-dnn_train_predictions <- predict(dnn_scores, X_nn)
+dnn_train_predictions <- predict(dnn_scores, X_nn_train_matrix)
 
 # calculating MSE
 dnn_train_mse <- mean((dnn_train_predictions - dt_students_train$exam_score)^2)
@@ -728,20 +707,8 @@ cat("Training MSE of DNN: ", dnn_train_mse)
 Calculating test MSE:
 
 ```{r}
-# first I need to prepare train dataset before passing it to DNN model
-
-# slicing useless cols
-X_test_df <- dt_students_test[,-c("student_id", "exam_score")]
-
-# scaling numeric 
-X_test_df_scaled <- X_test_df %>%
-  mutate_if(is.numeric, scale)
-
-# one-hot encoding for factors
-X_test_nn <- model.matrix(~ . -1, data = X_test_df_scaled)
-
 # predicting
-dnn_test_predictions <- predict(dnn_scores, X_test_nn)
+dnn_test_predictions <- predict(dnn_scores, X_nn_test_matrix)
 
 # calculating MSE
 dnn_test_mse <- mean((dnn_test_predictions - dt_students_test$exam_score)^2)
@@ -757,55 +724,52 @@ create a reusable function, which will help me along:
 ```{r}
 calculate_cv_loss_for_dnn <- function(data, layers = c(32, 1), epochs = 100, verbose = 0) {
   set_seed_for_random_state()
-  
-  # prepare data
-  prepared_data <- prepare_data_for_nn(data)
-  folds         <- vfold_cv(prepared_data, v = 5)
-  cv_losses     <- c()
+
+  nn_recipe_cv <- recipe(exam_score ~ ., data = data) %>%
+    update_role(student_id, new_role = "ID") %>%
+    step_normalize(all_numeric_predictors()) %>%
+    step_dummy(all_nominal_predictors(), one_hot = TRUE)
+
+  folds <- vfold_cv(data, v = 10)
+  cv_losses <- c()
 
   for (fold in folds$splits) {
     set_seed_for_random_state()
-    train_data <- analysis(fold)
-    val_data <- assessment(fold)
 
-    # Drop target + ID
-    X_train <- train_data[, -c("student_id", "exam_score")]
-    X_val   <- val_data[, -c("student_id", "exam_score")]
+    train_data_fold <- analysis(fold)
+    val_data_fold <- assessment(fold)
 
-    # One-hot encoding
-    X_train_nn <- as.matrix(X_train)
-    X_val_nn   <- as.matrix(X_val)
+    prepped_recipe_fold <- prep(nn_recipe_cv, training = train_data_fold)
 
-    y_train <- train_data$exam_score
-    y_val   <- val_data$exam_score
+    X_train_processed_fold <- bake(prepped_recipe_fold, new_data = train_data_fold)
+    X_val_processed_fold <- bake(prepped_recipe_fold, new_data = val_data_fold)
 
-    # Build DNN
+    X_train_nn_fold <- as.matrix(X_train_processed_fold %>% select(-exam_score, -student_id))
+    y_train_fold <- train_data_fold$exam_score
+    X_val_nn_fold <- as.matrix(X_val_processed_fold %>% select(-exam_score, -student_id))
+    y_val_fold <- val_data_fold$exam_score
+
     dnn_model <- keras_model_sequential()
     for (i in seq_along(layers)) {
       units <- layers[i]
       if (i == length(layers)) {
-        dnn_model <- dnn_model %>%
-          layer_dense(units = units)
+        dnn_model <- dnn_model %>% layer_dense(units = units)
       } else {
-        dnn_model <- dnn_model %>%
-          layer_dense(units = units, activation = "relu")
+        dnn_model <- dnn_model %>% layer_dense(units = units, activation = "relu")
       }
     }
 
-    dnn_model %>% compile(
-      loss = "MSE",
-      optimizer = "adam"
-    )
+    dnn_model %>% compile(loss = "MSE", optimizer = "adam")
 
     dnn_model %>% fit(
-      x = X_train_nn,
-      y = y_train,
+      x = X_train_nn_fold,
+      y = y_train_fold,
       epochs = epochs,
       verbose = verbose
     )
 
-    preds <- predict(dnn_model, X_val_nn)
-    fold_mse <- mean((preds - y_val)^2)
+    preds <- predict(dnn_model, X_val_nn_fold)
+    fold_mse <- mean((preds - y_val_fold)^2)
     cv_losses <- c(cv_losses, fold_mse)
   }
 
@@ -855,8 +819,8 @@ fitting:
 set_seed_for_random_state()
 
 dnn_history_2 <- dnn_scores_2 %>% fit(
-  x=X_nn,
-  y=y_nn,
+  x=X_nn_train_matrix,
+  y=y_nn_train,
   verbose = 0,
   epochs = 100,
   validation_split = 0.2
@@ -872,7 +836,7 @@ Calculating training MSE:
 
 ```{r}
 # predicting on training dataset
-dnn_2_train_predictions <- predict(dnn_scores_2, X_nn)
+dnn_2_train_predictions <- predict(dnn_scores_2, X_nn_train_matrix)
 
 # calculating MSE
 dnn_train_mse_2 <- mean((dnn_2_train_predictions - dt_students_train$exam_score)^2)
@@ -884,20 +848,8 @@ cat("Training MSE of DNN: ", dnn_train_mse_2)
 Calculating test MSE:
 
 ```{r}
-# first I need to prepare train dataset before passing it to DNN model
-
-# slicing useless cols
-X_test_df <- dt_students_test[,-c("student_id", "exam_score")]
-
-# scaling numeric 
-X_test_df_scaled <- X_test_df %>%
-  mutate_if(is.numeric, scale)
-
-# one-hot encoding for factors
-X_test_nn <- model.matrix(~ . -1, data = X_test_df_scaled)
-
 # predicting
-dnn_test_predictions_2 <- predict(dnn_scores_2, X_test_nn)
+dnn_test_predictions_2 <- predict(dnn_scores_2, X_nn_test_matrix)
 
 # calculating MSE
 dnn_test_mse_2 <- mean((dnn_test_predictions_2 - dt_students_test$exam_score)^2)
@@ -944,8 +896,8 @@ So now model is created, now I will fit it.
 set_seed_for_random_state()
 
 dnn_history_3 <- dnn_scores_3 %>% fit(
-  x=X_nn,
-  y=y_nn,
+  x=X_nn_train_matrix,
+  y=y_nn_train,
   verbose = 0,
   epochs = 100,
   validation_split = 0.2
@@ -960,7 +912,7 @@ Calculating training MSE:
 
 ```{r}
 # predicting on training dataset
-dnn_train_predictions_3 <- predict(dnn_scores_3, X_nn)
+dnn_train_predictions_3 <- predict(dnn_scores_3, X_nn_train_matrix)
 
 # calculating MSE
 dnn_train_mse_3 <- mean((dnn_train_predictions_3 - dt_students_train$exam_score)^2)
@@ -972,20 +924,8 @@ cat("Training MSE of DNN: ", dnn_train_mse_3)
 Calculating test MSE:
 
 ```{r}
-# first I need to prepare train dataset before passing it to DNN model
-
-# slicing useless cols
-X_test_df <- dt_students_test[,-c("student_id", "exam_score")]
-
-# scaling numeric 
-X_test_df_scaled <- X_test_df %>%
-  mutate_if(is.numeric, scale)
-
-# one-hot encoding for factors
-X_test_nn <- model.matrix(~ . -1, data = X_test_df_scaled)
-
 # predicting
-dnn_test_predictions_3 <- predict(dnn_scores_3, X_test_nn)
+dnn_test_predictions_3 <- predict(dnn_scores_3, X_nn_test_matrix)
 
 # calculating MSE
 dnn_test_mse_3 <- mean((dnn_test_predictions_3 - dt_students_test$exam_score)^2)
@@ -1087,67 +1027,140 @@ The behavior of the Random Forest model is particularly surprising. While Random
 -   Rerun the previous 4 models on all PCs or on a reduced number of
     PCs.
 
-### Calculating PCs
+## Preparation
 
-Before I start working with PCA, this is important to normalize the
-data, so that measurement scale will not affect PCs.
-
-```{r}
-#dt_pca <- data.table(scale(dt_houses[,c("area", "bedrooms", "bathrooms", "stories", "parking")]))
-```
-
-Now I want to run my PCA with help of prcomp and get the summary, to
-dive in to Data.
+As I used before the library recipies from tidymodels, I found it very convinient to work with this library, and also it provides PCA, so I will create new Recipie for a PCA part of the work.
 
 ```{r}
-#dt_houses_pca <- prcomp(dt_pca)
-#summary(dt_houses_pca)
+nn_pca_recipe <- recipe(exam_score ~ ., data = dt_students_train) %>%
+  update_role(student_id, new_role = "ID") %>%
+  step_normalize(all_numeric_predictors()) %>% 
+  step_pca(all_numeric_predictors(), threshold = 1) %>% 
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) 
+
+# preparing transformation on a basis of train dataset
+prepped_pca_recipe <- prep(nn_pca_recipe, training = dt_students_train)
+
+# applying transfomration to my train and test datasets
+X_train_pca_processed <- bake(prepped_pca_recipe, new_data = dt_students_train)
+X_test_pca_processed <- bake(prepped_pca_recipe, new_data = dt_students_test)
+
+# preparing X and y values for models
+X_train_pca <- as.data.frame(X_train_pca_processed %>% select(-exam_score, -student_id))
+y_train_pca <- dt_students_train$exam_score
+
+X_test_pca <- X_test_pca_processed %>% select(-exam_score, -student_id)
+y_test_pca <- dt_students_test$exam_score
+
+# For Keras, we often need matrices directly
+X_nn_train_pca_matrix <- as.matrix(X_train_pca)
+X_nn_test_pca_matrix <- as.matrix(X_test_pca)
 ```
 
-That looks interesting, but I would like to plot it, to visualize it, so
-that it could be easier to understand.
+So now the data is prepared to re run all models on PCs.
+
+## Linear model
 
 ```{r}
-#fviz_eig(dt_houses_pca, addlabels = TRUE) + 
-#         theme(plot.title = element_text(hjust = 0.5))
+set_seed_for_random_state()
+
+train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
+
+lm_pca_scores <- caret::train(exam_score ~ .,
+                           data = cbind(X_train_pca, exam_score = y_train_pca),
+                           method = "lm",
+                           trControl = train_control)
+
+summary(lm_pca_scores)
+
+# Training MSE
+lm_pca_train_predictions <- predict(lm_pca_scores, newdata = X_train_pca)
+lm_pca_train_mse <- mean((y_train_pca - lm_pca_train_predictions)^2)
+cat("LM PCA Training MSE:", lm_pca_train_mse, "\n")
+
+# CV MSE
+lm_pca_cv_mse <- lm_pca_scores$results$RMSE^2
+cat("LM PCA Cross-Validation MSE:", lm_pca_cv_mse, "\n")
+
+# Test MSE
+lm_pca_test_predictions <- predict(lm_pca_scores, newdata = X_test_pca)
+lm_pca_test_mse <- mean((y_test_pca - lm_pca_test_predictions)^2)
+cat("LM PCA Test MSE:", lm_pca_test_mse, "\n")
 ```
 
-From this plot it is obvious that all PC are useful and reducing
-dimensionality will not be beneficial, because last 3 PCs contribute
-approx. 12% each, which is a fair amount in this case. So I would like
-to use all PCs, because it is not always necessary to cut dimensionality
-and it depends on how much variablse we actually have, and how big of a
-contribution makes each PC. May be in this case "change of basis" will
-perform better.
 
-### Running models with PCs
-
-Now as I have calculated PCs, it is time to run models with new inputs.
-
-#### Linear model
-
-First we will start off with linear model.
+## Tree model
 
 ```{r}
-# pc_table <- dt_houses_pca$x
+set_seed_for_random_state()
 
-# dt_houses_pc_table_for_lm <- data.frame(price = dt_houses$price, pc_table)
+train_control <- trainControl(method = "repeatedcv",
+                              number = 10,
+                              repeats = 10)
 
-# price_lm_pca <- lm(formula = price ~ ., data = dt_houses_pc_table_for_lm)
+scores_tree_pca <- caret::train(
+  x = X_train_pca,
+  y = y_train_pca,
+  method = "rpart",
+  trControl = train_control,
+  tuneLength = 20
+)
 
-# summary(price_lm_pca)
+print(scores_tree_pca)
+
+# Training MSE
+tree_pca_train_predictions <- predict(scores_tree_pca, newdata = X_train_pca)
+tree_pca_train_mse <- mean((y_train_pca - tree_pca_train_predictions)^2)
+cat("Tree PCA Training MSE:", tree_pca_train_mse, "\n")
+
+# CV MSE
+best_cp_pca <- scores_tree_pca$bestTune$cp
+cv_rmse_tree_pca <- scores_tree_pca$results$RMSE[scores_tree_pca$results$cp == best_cp_pca]
+tree_pca_cv_mse <- cv_rmse_tree_pca^2
+cat("Tree PCA Cross-Validation MSE:", tree_pca_cv_mse, "\n")
+
+# Test MSE
+test_predictions_tree_pca <- predict(scores_tree_pca, newdata = X_test_pca)
+tree_pca_test_mse <- mean((y_test_pca - test_predictions_tree_pca)^2)
+cat("Tree PCA Test MSE:", tree_pca_test_mse, "\n")
 ```
+
+## Random forest
 
 ```{r}
-# price_lm_pca_rmse <- mean(sqrt(abs(price_lm_pca$residuals)))
+set_seed_for_random_state()
 
-# price_lm_pca_rmse
+rf_pca_grid <- data.table("mtry" = 1:ncol(X_train_pca))
+
+train_control_rf <- trainControl(method = "cv", number = 10)
+
+rf_pca_scores <- caret::train(x = X_train_pca,
+                           y = y_train_pca,
+                           method = "rf",
+                           ntrees = 500,
+                           trControl = train_control_rf,
+                           search = "grid",
+                           tuneGrid = rf_pca_grid)
+
+rf_pca_scores
+
+# Training MSE
+train_predictions_rf_pca <- predict(rf_pca_scores, newdata = X_train_pca)
+rf_pca_train_mse <- mean((y_train_pca - train_predictions_rf_pca)^2)
+cat("RF PCA Training MSE:", rf_pca_train_mse, "\n")
+
+# Cross Validation MSE
+optimal_rf_pca <- rf_pca_scores$results[rf_pca_scores$results$mtry == rf_pca_scores$bestTune$mtry, ]
+rf_pca_cv_mse <- optimal_rf_pca$RMSE^2
+print(paste("RF PCA Cross-validation MSE for optimal mtry (", rf_pca_scores$bestTune$mtry, "):", rf_pca_cv_mse))
+
+# Test MSE
+test_predictions_rf_pca <- predict(rf_pca_scores, newdata = X_test_pca)
+rf_pca_test_mse <- mean((y_test_pca - test_predictions_rf_pca)^2)
+cat("RF PCA Test MSE:", rf_pca_test_mse, "\n")
 ```
 
-Now, after PCA the results are worse and I think this is because there
-are fair amount of binary variables in this dataset and PCA could not
-capture all information, espesially information, which is captured in
-binary variables, such as "mainroad", "airconditioning" and so on.
+## DNN
 
 # Model Selection
 
