@@ -4,7 +4,7 @@ author: "Omar Zhadykov, 220220503"
 output:
   html_notebook:
     fig_width: 10
-    theme: darkly
+    theme: spacelab
     toc: yes
     toc_depth: 3
     toc_float: yes
@@ -14,7 +14,7 @@ output:
   pdf_document: default
   html_document:
     fig_width: 10
-    theme: darkly
+    theme: spacelab
     toc: yes
     toc_depth: 3
     toc_float: yes
@@ -131,9 +131,9 @@ library(reticulate)
 
 set_seed_for_random_state <- function () {
   # this is for replication
-  set.seed(42)
-  tensorflow::tf$random$set_seed(42)
-  py_run_string("import numpy as np; import random; random.seed(42); np.random.seed(42)")
+  set.seed(123)
+  tensorflow::tf$random$set_seed(123)
+  py_run_string("import numpy as np; import random; random.seed(123); np.random.seed(123)")
 }
 ```
 
@@ -722,19 +722,25 @@ As this is first place, where I will calculate CV loss for NN, I will
 create a reusable function, which will help me along:
 
 ```{r}
-calculate_cv_loss_for_dnn <- function(data, layers = c(32, 1), epochs = 100, verbose = 0) {
+calculate_cv_loss_for_dnn <- function(data, layers = c(32, 1), epochs = 100, verbose = 0, pca = FALSE) {
   set_seed_for_random_state()
 
   nn_recipe_cv <- recipe(exam_score ~ ., data = data) %>%
     update_role(student_id, new_role = "ID") %>%
     step_normalize(all_numeric_predictors()) %>%
     step_dummy(all_nominal_predictors(), one_hot = TRUE)
+  
+  if (pca == TRUE)
+    nn_recipe_cv_pca <- recipe(exam_score ~ ., data = data) %>%
+      update_role(student_id, new_role = "ID") %>%
+      step_normalize(all_numeric_predictors()) %>%
+      step_pca(all_numeric_predictors(), threshold = 0.95) %>%
+      step_dummy(all_nominal_predictors(), one_hot = TRUE)
 
   folds <- vfold_cv(data, v = 10)
   cv_losses <- c()
 
   for (fold in folds$splits) {
-    set_seed_for_random_state()
 
     train_data_fold <- analysis(fold)
     val_data_fold <- assessment(fold)
@@ -1022,11 +1028,6 @@ The behavior of the Random Forest model is particularly surprising. While Random
 
 # PCA
 
--   Run a PCA on your input variables and discuss the scope for
-    dimensionality reduction in your dataset.
--   Rerun the previous 4 models on all PCs or on a reduced number of
-    PCs.
-
 ## Preparation
 
 As I used before the library recipies from tidymodels, I found it very convinient to work with this library, and also it provides PCA, so I will create new Recipie for a PCA part of the work.
@@ -1035,7 +1036,7 @@ As I used before the library recipies from tidymodels, I found it very convinien
 nn_pca_recipe <- recipe(exam_score ~ ., data = dt_students_train) %>%
   update_role(student_id, new_role = "ID") %>%
   step_normalize(all_numeric_predictors()) %>% 
-  step_pca(all_numeric_predictors(), threshold = 1) %>% 
+  step_pca(all_numeric_predictors(), threshold = 0.95) %>% 
   step_dummy(all_nominal_predictors(), one_hot = TRUE) 
 
 # preparing transformation on a basis of train dataset
@@ -1162,6 +1163,58 @@ cat("RF PCA Test MSE:", rf_pca_test_mse, "\n")
 
 ## DNN
 
+```{r}
+set_seed_for_random_state()
+
+dnn_scores_pca <- keras_model_sequential() %>%
+   layer_dense(32, activation = 'relu') %>%
+   layer_dense(1)
+
+dnn_scores_pca %>% compile(
+  loss = 'MSE',
+  optimizer = "adam"
+)
+
+summary(dnn_scores_pca)
+
+dnn_history <- dnn_scores_pca %>% fit(
+  x=X_nn_train_pca_matrix,
+  y=y_nn_train,
+  verbose = 0,
+  epochs = 100,
+  validation_split = 0.2
+)
+
+plot(dnn_history)
+
+```
+
+```{r}
+# predicting on training dataset
+dnn_train_predictions_pca <- predict(dnn_scores_pca, X_nn_train_pca_matrix)
+
+# calculating MSE
+dnn_train_pca_mse <- mean((dnn_train_predictions_pca - dt_students_train$exam_score)^2)
+
+cat("Training MSE of DNN: ", dnn_train_pca_mse)
+```
+
+```{r}
+# predicting
+dnn_test_predictions_pca <- predict(dnn_scores_pca, X_nn_test_pca_matrix)
+
+# calculating MSE
+dnn_test_mse_pca <- mean((dnn_test_predictions_pca - dt_students_test$exam_score)^2)
+
+cat("Testing MSE of DNN: ", dnn_test_mse_pca)
+```
+
+```{r}
+dnn_cv_mse_pca <- calculate_cv_loss_for_dnn(dt_students_train, c(32, 1), 100, 0, TRUE)
+dnn_cv_mse_pca
+```
+
+
 # Model Selection
 
 -   Compare all of your models based on their CV performance. You will
@@ -1169,4 +1222,36 @@ cat("RF PCA Test MSE:", rf_pca_test_mse, "\n")
 -   Present the results in a table or chart.
 -   Estimate the expected loss of your best model on the test set.
 
-------------------------------------------------------------------------
+
+```{r}
+values <- c(lm_cv_mse, tree_cv_mse, rf_cv_mse, dnn_cv_mse_1, lm_pca_cv_mse, tree_pca_cv_mse, rf_pca_cv_mse, dnn_cv_mse_pca)
+custom_labels <- c("Linear model", "Tree model", "Random forest", "DNN", "Linear model PCA", "Tree model PCA", "Random forest PCA", "DNN PCA")
+
+data_for_plot <- data.frame(
+  ID = as.factor(custom_labels),
+  Value = values
+)
+
+ggplot(data_for_plot, aes(x = ID, y = Value)) +
+  geom_col(fill = "#69db7c") +
+  geom_text(aes(label = round(Value, 2)), 
+            vjust = -0.5,                  
+            size = 3) +                    
+  labs(
+    title = "Test Loss of Various Models", 
+    x = "Model name",
+    y = "Loss (MSE)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+    axis.title = element_text(size = 10),
+    axis.text.x = element_text(size = 7, angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 7),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    plot.margin = unit(c(1, 1, 1, 1), "lines")
+  )
+```
+
+
