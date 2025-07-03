@@ -116,8 +116,6 @@ library(rpart)
 library(recipes)
 library(rpart.plot)
 library(factoextra)
-library(keras3)
-library(tensorflow)
 library(rsample)
 library(dplyr)
 library(reticulate)
@@ -539,7 +537,7 @@ is because my dataset is synthetic and was created for a regression
 problem. It is possible, therefore, that the linear model will perform
 best overall.
 
-# Ensemble
+# Ensemble 1
 
 Now it is time to upgrade tree to a random forest. I will be using caret
 for model creation and evaluation.
@@ -551,6 +549,8 @@ before training a random forest. There are 2 main hyperparameters:
 
 -   ntree, number of trees grown
 -   mtry, number of variables used
+
+I  create grid, with all possible combinations of hyperparameters
 
 ```{r}
 # preparing the grid for caret
@@ -611,364 +611,70 @@ cat("Random Forest Test MSE:", rf_test_mse)
 So, after I trained 500 trees with hyperparameter mtry = 13 I got Train
 MSE ~6, which is so much better than a decision tree, but the CV value is ~38.
 
-# Neural Network
+# Ensemble 2
 
-I found, that there is Keras3 for R, which is updated version of Keras.
-So now I would like to start with Inputs for my NN.
+## Training
 
-## Preparation
-
-Also it is important to normalize the data, so I will normalize the
-data, but from my research, Keras accepts (or TenserFlow under the hood
-only numeric variables, so all my factors, should be converted to
-numeric values, I will use one-hot encodeing for my factor variables)
+As my second ensemble I would like to use Gradient Boosting. I will also use caret to train and cross validate this model.
 
 ```{r}
-nn_recipe <- recipe(exam_score ~ ., data = dt_students_train) %>%
-  update_role(student_id, new_role = "ID") %>% 
-  step_normalize(all_numeric_predictors()) %>% 
-  step_dummy(all_nominal_predictors(), one_hot = TRUE)
+train_control_boosting <- trainControl(method = "cv", number = 10)
 
-prepped_recipe <- prep(nn_recipe, training = dt_students_train)
-X_train_processed <- bake(prepped_recipe, new_data = dt_students_train)
+gbm_grid =  expand.grid(interaction.depth = 1:5,
+                        n.trees = c(500,1000,2000,5000),
+                        shrinkage = c(0.1, 0.01, 0.001),
+                        n.minobsinnode = c(10,20))
 
-X_nn_train_matrix <- as.matrix(X_train_processed %>% select(-exam_score, -student_id))
-y_nn_train <- dt_students_train$exam_score
+caret_gbm <- caret::train(exam_score ~ ., data = dt_students_train[,-"student_id"],
+                     method = "gbm",
+                     trControl = train_control_boosting,
+                     tuneGrid = gbm_grid,
+                     verbose = FALSE)
 
-X_test_processed <- bake(prepped_recipe, new_data = dt_students_test)
-X_nn_test_matrix <- as.matrix(X_test_processed %>% select(-exam_score, -student_id))
-y_nn_test <- dt_students_test$exam_score
+head(caret_gbm$results)
 ```
 
-## Configuration 1
+This is a sample of all results, which caret has after training and evaluating the Gradinet boosting model.
 
-### Training
-
-Here I want to strat very simple and use only 2 layers, first input will
-have 32 neurons and the second one only 1
-
-Now, after all Inputs are prepared and normalized, it is time to try DNN
-in R
+And the best Model has these hyperparameters:
 
 ```{r}
-set_seed_for_random_state()
-
-dnn_scores <- keras_model_sequential() %>%
-   layer_dense(32, activation = 'relu') %>%
-   layer_dense(1)
-
-dnn_scores %>% compile(
-  loss = 'MSE',
-  optimizer = "adam"
-)
-
-summary(dnn_scores)
-
+caret_gbm$bestTune
 ```
 
-So now model is created, now it is time to fit it. I also will plot the loss with epochs of training for a better visualization:
+## Evaluation
 
-```{r}
-set_seed_for_random_state()
-
-dnn_history <- dnn_scores %>% fit(
-  x=X_nn_train_matrix,
-  y=y_nn_train,
-  verbose = 0,
-  epochs = 100,
-  validation_split = 0.2
-)
-
-plot(dnn_history)
-```
-
-### Evaluation
+And as always, calcualting training loss and CV loss.
 
 Calculating training MSE:
 
 ```{r}
-# predicting on training dataset
-dnn_train_predictions <- predict(dnn_scores, X_nn_train_matrix)
-
-# calculating MSE
-dnn_train_mse <- mean((dnn_train_predictions - dt_students_train$exam_score)^2)
-
-cat("Training MSE of DNN: ", dnn_train_mse)
-
-```
-
-Calculating test MSE:
-
-```{r}
-# predicting
-dnn_test_predictions <- predict(dnn_scores, X_nn_test_matrix)
-
-# calculating MSE
-dnn_test_mse <- mean((dnn_test_predictions - dt_students_test$exam_score)^2)
-
-cat("Testing MSE of DNN: ", dnn_test_mse)
-```
-
-Calculating CV loss:
-
-As this is first place, where I will calculate CV loss for NN, I will
-create a reusable function, which will help me along:
-
-```{r}
-calculate_cv_loss_for_dnn <- function(data, layers = c(32, 1), epochs = 100, verbose = 0, pca = FALSE) {
-  set_seed_for_random_state()
-
-  nn_recipe_cv <- recipe(exam_score ~ ., data = data) %>%
-    update_role(student_id, new_role = "ID") %>%
-    step_normalize(all_numeric_predictors()) %>%
-    step_dummy(all_nominal_predictors(), one_hot = TRUE)
-  
-  if (pca == TRUE)
-    nn_recipe_cv_pca <- recipe(exam_score ~ ., data = data) %>%
-      update_role(student_id, new_role = "ID") %>%
-      step_normalize(all_numeric_predictors()) %>%
-      step_pca(all_numeric_predictors(), threshold = 0.95) %>%
-      step_dummy(all_nominal_predictors(), one_hot = TRUE)
-
-  folds <- vfold_cv(data, v = 10)
-  cv_losses <- c()
-
-  for (fold in folds$splits) {
-
-    train_data_fold <- analysis(fold)
-    val_data_fold <- assessment(fold)
-
-    prepped_recipe_fold <- prep(nn_recipe_cv, training = train_data_fold)
-
-    X_train_processed_fold <- bake(prepped_recipe_fold, new_data = train_data_fold)
-    X_val_processed_fold <- bake(prepped_recipe_fold, new_data = val_data_fold)
-
-    X_train_nn_fold <- as.matrix(X_train_processed_fold %>% select(-exam_score, -student_id))
-    y_train_fold <- train_data_fold$exam_score
-    X_val_nn_fold <- as.matrix(X_val_processed_fold %>% select(-exam_score, -student_id))
-    y_val_fold <- val_data_fold$exam_score
-
-    dnn_model <- keras_model_sequential()
-    for (i in seq_along(layers)) {
-      units <- layers[i]
-      if (i == length(layers)) {
-        dnn_model <- dnn_model %>% layer_dense(units = units)
-      } else {
-        dnn_model <- dnn_model %>% layer_dense(units = units, activation = "relu")
-      }
-    }
-
-    dnn_model %>% compile(loss = "MSE", optimizer = "adam")
-
-    dnn_model %>% fit(
-      x = X_train_nn_fold,
-      y = y_train_fold,
-      epochs = epochs,
-      verbose = verbose
-    )
-
-    preds <- predict(dnn_model, X_val_nn_fold)
-    fold_mse <- mean((preds - y_val_fold)^2)
-    cv_losses <- c(cv_losses, fold_mse)
-  }
-
-  mean(cv_losses)
-}
-```
-
-In this function, I pass original data, then inside this data will be
-scaled, centered, and then I will use 10 folds to cross validate.
-
-Now, I will calculate CV loss for the configuration with 2 Layers:
-
-```{r}
-dnn_cv_mse_1 <- calculate_cv_loss_for_dnn(dt_students_train, c(32, 1))
-dnn_cv_mse_1
-```
-
-NN with only 2 layers performs better than a decision tree model. Decision Tree has a CV loss of approx 76 and small NN has a test loss of a approx. 28.39.
-
-## Configuration 2
-
-After evaluation of a simple configuration 1, I can try some more complex configurations.
-
-### Training
-
-Here I want to use 3 layers, first input will have
-32 neurons, second 16, and the second one only 1
-
-```{r}
 set_seed_for_random_state()
 
-dnn_scores_2 <- keras_model_sequential() %>%
-   layer_dense(32, activation = 'relu') %>%
-   layer_dense(16, activation = 'relu') %>%
-   layer_dense(1)
+boosting_predictions <- predict(caret_gbm, newdata = dt_students_train)
 
-dnn_scores_2 %>% compile(
-  loss = 'MSE',
-  optimizer = "adam"
-)
+boosting_train_mse <- mean((dt_students_train$exam_score - boosting_predictions)^2)
 
-summary(dnn_scores)
-
-```
-fitting:
-
-```{r}
-set_seed_for_random_state()
-
-dnn_history_2 <- dnn_scores_2 %>% fit(
-  x=X_nn_train_matrix,
-  y=y_nn_train,
-  verbose = 0,
-  epochs = 100,
-  validation_split = 0.2
-)
-
-plot(dnn_history_2)
-```
-
-We can see that with more neurons, model trains faster, and needs less repetitions to get to the optimal parameters.
-
-### Evaluation
-
-Calculating training MSE:
-
-```{r}
-# predicting on training dataset
-dnn_2_train_predictions <- predict(dnn_scores_2, X_nn_train_matrix)
-
-# calculating MSE
-dnn_train_mse_2 <- mean((dnn_2_train_predictions - dt_students_train$exam_score)^2)
-
-cat("Training MSE of DNN: ", dnn_train_mse_2)
-
-```
-
-Calculating test MSE:
-
-```{r}
-# predicting
-dnn_test_predictions_2 <- predict(dnn_scores_2, X_nn_test_matrix)
-
-# calculating MSE
-dnn_test_mse_2 <- mean((dnn_test_predictions_2 - dt_students_test$exam_score)^2)
-
-cat("Testing MSE of DNN: ", dnn_test_mse_2)
+cat("Boosting training MSE: ", boosting_train_mse)
 ```
 
 Calculating CV loss:
 
 ```{r}
-dnn_cv_mse_2 <- calculate_cv_loss_for_dnn(dt_students_train, c(32, 16, 1))
-dnn_cv_mse_2
-```
-This configuration performs better on training dataset with MSE of ~24.9, but CV loss is almost the same, and simpler model shows slightly better performance.
+boosting_cv_mse <- caret_gbm$results[which.min(caret_gbm$results$RMSE), "RMSE"]^2
 
-## Configuration 3
-
-In the last NN configuration, I want to use 4 layers, and I could assume, that this model could overfitt my training dataset and generalize even worser than previous configuration, as second configuration had alredy shown slight generalization decrease.
-
-### Training
-
-Here I want to use 4 layers, 64, 32, 16 and 1
-
-```{r}
-set_seed_for_random_state()
-dnn_scores_3 <- keras_model_sequential() %>%
-  layer_dense(64, activation = 'relu') %>%
-  layer_dense(32, activation = 'relu') %>%
-  layer_dense(16, activation = 'relu') %>%
-  layer_dense(1)
-
-dnn_scores_3 %>% compile(
-  loss = 'MSE',
-  optimizer = "adam"
-)
-
-summary(dnn_scores_3)
-
+cat("Boosting CV loss: ", boosting_cv_mse)
 ```
 
-So now model is created, now I will fit it.
-
-```{r}
-set_seed_for_random_state()
-
-dnn_history_3 <- dnn_scores_3 %>% fit(
-  x=X_nn_train_matrix,
-  y=y_nn_train,
-  verbose = 0,
-  epochs = 100,
-  validation_split = 0.2
-)
-
-plot(dnn_history_3)
-```
-
-### Evaluating
-
-Calculating training MSE:
-
-```{r}
-# predicting on training dataset
-dnn_train_predictions_3 <- predict(dnn_scores_3, X_nn_train_matrix)
-
-# calculating MSE
-dnn_train_mse_3 <- mean((dnn_train_predictions_3 - dt_students_train$exam_score)^2)
-
-cat("Training MSE of DNN: ", dnn_train_mse_3)
-
-```
-
-Calculating test MSE:
-
-```{r}
-# predicting
-dnn_test_predictions_3 <- predict(dnn_scores_3, X_nn_test_matrix)
-
-# calculating MSE
-dnn_test_mse_3 <- mean((dnn_test_predictions_3 - dt_students_test$exam_score)^2)
-
-cat("Testing MSE of DNN: ", dnn_test_mse_3)
-```
-
-Calculating CV loss:
-
-```{r}
-dnn_cv_mse_3 <- calculate_cv_loss_for_dnn(dt_students_train, c(64, 32, 16, 1))
-dnn_cv_mse_3
-```
-
-As I expected CV loss is bigger now, but by a little margin, so it is not a big problem, but it tends to generalize worse if the complexity of the NN grows.
-
-## Best DNN
-
-So now it is time to choose the DNN model, which performs the best:
-
-```{r}
-cat("Training performance:\n", "DNN_1: ", dnn_train_mse, "\n", "DNN_2: ", dnn_train_mse_2, "\n", "DNN_3: ", dnn_train_mse_3, "\n\n",
-    "Testing performance:\n", "DNN_1: ", dnn_test_mse, "\n", "DNN_2: ", dnn_test_mse_2, "\n", "DNN_3: ", dnn_test_mse_3,  "\n\n",
-    "CV Loss:\n", "DNN_1: ", dnn_cv_mse_1, "\n", "DNN_2: ", dnn_cv_mse_2, "\n", "DNN_3: ", dnn_cv_mse_3)
-```
-
-From all models, I think the largest one is slightly overfitting the data
-and thus generalizes slightly worse than smallest model in my case.
-So I will chose the first model to compare with others. And here we can take a look on it:
-
-```{r}
-summary(dnn_scores)
-```
-
+This model performs better than linear model, but only by a little margin.
 
 # Model Comparison
 
 Let's compare all 4 models, which I have now. There are Linear model, tree, random forest, deep neural network. I want to compare them by CV loss and for that I will make small bar plot with their performance:
 
 ```{r}
-values <- c(lm_cv_mse, tree_cv_mse, rf_cv_mse, dnn_cv_mse_1)
-custom_labels <- c("Linear model", "Tree model", "Random forest", "DNN")
+values <- c(lm_cv_mse, tree_cv_mse, rf_cv_mse, boosting_cv_mse)
+custom_labels <- c("Linear model", "Tree model", "Random forest", "GBM")
 
 data_for_plot <- data.frame(
   ID = as.factor(custom_labels),
@@ -996,13 +702,13 @@ ggplot(data_for_plot, aes(x = ID, y = Value)) +
     plot.margin = unit(c(1, 1, 1, 1), "lines")
   )
 ```
-Among the models evaluated, the linear model delivered the best performance, with DNN and Random Forest models yielding very comparable results. Notably, the decision tree model exhibited significantly higher errors, nearly tripple that of the linear model. This outcome is intriguing and suggests the underlying true function within this synthetic dataset might indeed be linear. But maybe DNN and Random forest will provide better results after performing PCA.
+Among the models evaluated, the Gradient boosting model delivered the best performance, but linear model keeps up very good. Meanwhile Random forest performs approx. 26% worse than linear or gradient boosting model. Decision tree delivers the worst CV loss and therefore ranked as least performing model.
 
 One more thing, that is also interesting for me is training loss:
 
 ```{r}
-values <- c(lm_train_mse, tree_train_mse, rf_train_mse, dnn_train_mse)
-custom_labels <- c("Linear model", "Tree model", "Random forest", "DNN")
+values <- c(lm_train_mse, tree_train_mse, rf_train_mse, boosting_train_mse)
+custom_labels <- c("Linear model", "Tree model", "Random forest", "GBM")
 
 data_for_plot <- data.frame(
   ID = as.factor(custom_labels),
@@ -1037,39 +743,9 @@ The behavior of the Random Forest model is particularly surprising. While Random
 
 After very interesting investigation and comparement of 4 models, I would like to run PCA and compare CV loss from the all models again.
 
-## Preparation
-
-As I used before the library recipies from tidymodels, I found it very convenient to work with this library, and also it provides PCA, so I will create new Recipie for a PCA part of the work.
-
-```{r}
-nn_pca_recipe <- recipe(exam_score ~ ., data = dt_students_train) %>%
-  update_role(student_id, new_role = "ID") %>%
-  step_normalize(all_numeric_predictors()) %>% 
-  step_pca(all_numeric_predictors(), threshold = 0.95) %>% 
-  step_dummy(all_nominal_predictors(), one_hot = TRUE) 
-
-# preparing transformation on a basis of train dataset
-prepped_pca_recipe <- prep(nn_pca_recipe, training = dt_students_train)
-
-# applying transfomration to my train and test datasets
-X_train_pca_processed <- bake(prepped_pca_recipe, new_data = dt_students_train)
-X_test_pca_processed <- bake(prepped_pca_recipe, new_data = dt_students_test)
-
-# preparing X and y values for models
-X_train_pca <- as.data.frame(X_train_pca_processed %>% select(-exam_score, -student_id))
-y_train_pca <- dt_students_train$exam_score
-
-X_test_pca <- X_test_pca_processed %>% select(-exam_score, -student_id)
-y_test_pca <- dt_students_test$exam_score
-
-# For Keras, we often need matrices directly
-X_nn_train_pca_matrix <- as.matrix(X_train_pca)
-X_nn_test_pca_matrix <- as.matrix(X_test_pca)
-```
-
-So now the data is prepared to re run all models on PCs.
-
 ## Linear model
+
+To train models after PCA, I will add "pca" in pre process of caret.
 
 ```{r}
 set_seed_for_random_state()
@@ -1077,29 +753,31 @@ set_seed_for_random_state()
 train_control <- trainControl(method = "repeatedcv", number = 10, repeats = 10)
 
 lm_pca_scores <- caret::train(exam_score ~ .,
-                           data = cbind(X_train_pca, exam_score = y_train_pca),
-                           method = "lm",
-                           trControl = train_control)
+                   data = dt_students_train[, -"student_id"],
+                   method = "lm",
+                   trControl = train_control,
+                   preProcess = c("center","scale", "pca"))
 
 summary(lm_pca_scores)
+```
 
+And small overview of train and CV loss:
+
+```{r}
 # Training MSE
-lm_pca_train_predictions <- predict(lm_pca_scores, newdata = X_train_pca)
+lm_pca_train_predictions <- predict(lm_pca_scores, newdata = dt_students_train[, -"student_id"])
 lm_pca_train_mse <- mean((y_train_pca - lm_pca_train_predictions)^2)
 cat("LM PCA Training MSE:", lm_pca_train_mse, "\n")
 
 # CV MSE
 lm_pca_cv_mse <- lm_pca_scores$results$RMSE^2
 cat("LM PCA Cross-Validation MSE:", lm_pca_cv_mse, "\n")
-
-# Test MSE
-lm_pca_test_predictions <- predict(lm_pca_scores, newdata = X_test_pca)
-lm_pca_test_mse <- mean((y_test_pca - lm_pca_test_predictions)^2)
-cat("LM PCA Test MSE:", lm_pca_test_mse, "\n")
 ```
 
 
 ## Tree model
+
+There will be a similar process to a previous decision tree model, but now I will also add "pca" paramenter in pre process:
 
 ```{r}
 set_seed_for_random_state()
@@ -1109,18 +787,23 @@ train_control <- trainControl(method = "repeatedcv",
                               repeats = 10)
 
 scores_tree_pca <- caret::train(
-  x = X_train_pca,
-  y = y_train_pca,
+  x = X_train,
+  y = Y_train,
   method = "rpart",
   trControl = train_control,
-  tuneLength = 20
+  tuneLength = 20,
+  preProcess = c("center","scale", "pca")
 )
 
 print(scores_tree_pca)
+```
 
+Train and CV loss:
+
+```{r}
 # Training MSE
-tree_pca_train_predictions <- predict(scores_tree_pca, newdata = X_train_pca)
-tree_pca_train_mse <- mean((y_train_pca - tree_pca_train_predictions)^2)
+tree_pca_train_predictions <- predict(scores_tree_pca, newdata = dt_students_train[, -"student_id"])
+tree_pca_train_mse <- mean((dt_students_train$exam_score - tree_pca_train_predictions)^2)
 cat("Tree PCA Training MSE:", tree_pca_train_mse, "\n")
 
 # CV MSE
@@ -1128,113 +811,96 @@ best_cp_pca <- scores_tree_pca$bestTune$cp
 cv_rmse_tree_pca <- scores_tree_pca$results$RMSE[scores_tree_pca$results$cp == best_cp_pca]
 tree_pca_cv_mse <- cv_rmse_tree_pca^2
 cat("Tree PCA Cross-Validation MSE:", tree_pca_cv_mse, "\n")
-
-# Test MSE
-test_predictions_tree_pca <- predict(scores_tree_pca, newdata = X_test_pca)
-tree_pca_test_mse <- mean((y_test_pca - test_predictions_tree_pca)^2)
-cat("Tree PCA Test MSE:", tree_pca_test_mse, "\n")
 ```
 
+
 ## Random forest
+
+Here PCA will be also implemented with help of the caret pre process parameter:
 
 ```{r}
 set_seed_for_random_state()
 
-rf_pca_grid <- data.table("mtry" = 1:ncol(X_train_pca))
-
+# control settings
 train_control_rf <- trainControl(method = "cv", number = 10)
 
-rf_pca_scores <- caret::train(x = X_train_pca,
-                           y = y_train_pca,
-                           method = "rf",
-                           ntrees = 500,
-                           trControl = train_control_rf,
-                           search = "grid",
-                           tuneGrid = rf_pca_grid)
+rf_pca_scores <- caret::train(exam_score ~ ., data = dt_students_train[, -"student_id"],
+                   method="rf",
+                   ntrees=500,
+                   trControl = train_control_rf,
+                   search = "grid",
+                   tuneGrid = rf_grid,
+                   preProcess = c("center","scale", "pca"))
 
 rf_pca_scores
+```
 
+Train and CV loss:
+
+```{r}
 # Training MSE
-train_predictions_rf_pca <- predict(rf_pca_scores, newdata = X_train_pca)
-rf_pca_train_mse <- mean((y_train_pca - train_predictions_rf_pca)^2)
+train_predictions_rf_pca <- predict(rf_pca_scores, newdata = dt_students_train[, -"student_id"])
+rf_pca_train_mse <- mean((dt_students_train$exam_score - train_predictions_rf_pca)^2)
 cat("RF PCA Training MSE:", rf_pca_train_mse, "\n")
 
 # Cross Validation MSE
 optimal_rf_pca <- rf_pca_scores$results[rf_pca_scores$results$mtry == rf_pca_scores$bestTune$mtry, ]
 rf_pca_cv_mse <- optimal_rf_pca$RMSE^2
-print(paste("RF PCA Cross-validation MSE for optimal mtry (", rf_pca_scores$bestTune$mtry, "):", rf_pca_cv_mse))
-
-# Test MSE
-test_predictions_rf_pca <- predict(rf_pca_scores, newdata = X_test_pca)
-rf_pca_test_mse <- mean((y_test_pca - test_predictions_rf_pca)^2)
-cat("RF PCA Test MSE:", rf_pca_test_mse, "\n")
+cat("RF PCA Cross-validation MSE for optimal mtry (", rf_pca_scores$bestTune$mtry, "):", rf_pca_cv_mse)
 ```
 
-## DNN
+## Gradinet Boosting
+
+Here the procedure is the same as above:
+
+```{r}
+train_control_boosting <- trainControl(method = "cv", number = 10)
+
+gbm_grid =  expand.grid(interaction.depth = 1:5,
+                        n.trees = c(500,1000,2000,5000),
+                        shrinkage = c(0.1, 0.01, 0.001),
+                        n.minobsinnode = c(10,20))
+
+boosting_scores_pca <- caret::train(exam_score ~ ., data = dt_students_train[,-"student_id"],
+                     method = "gbm",
+                     trControl = train_control_boosting,
+                     tuneGrid = gbm_grid,
+                     preProcess = c("center","scale", "pca"),
+                     verbose = FALSE)
+
+head(boosting_scores_pca$results)
+```
+
+Calculating train and CV loss:
 
 ```{r}
 set_seed_for_random_state()
 
-dnn_scores_pca <- keras_model_sequential() %>%
-   layer_dense(32, activation = 'relu') %>%
-   layer_dense(1)
+boosting_pca_predictions <- predict(boosting_scores_pca, newdata = dt_students_train[,-"student_id"])
 
-dnn_scores_pca %>% compile(
-  loss = 'MSE',
-  optimizer = "adam"
-)
+boosting_pca_train_mse <- mean((dt_students_train$exam_score - boosting_pca_predictions)^2)
 
-summary(dnn_scores_pca)
-
-dnn_history <- dnn_scores_pca %>% fit(
-  x=X_nn_train_pca_matrix,
-  y=y_nn_train,
-  verbose = 0,
-  epochs = 100,
-  validation_split = 0.2
-)
-
-plot(dnn_history)
-
+cat("Boosting training MSE: ", boosting_pca_train_mse)
 ```
 
 ```{r}
-# predicting on training dataset
-dnn_train_predictions_pca <- predict(dnn_scores_pca, X_nn_train_pca_matrix)
+boosting_pca_cv_mse <- caret_gbm$results[which.min(boosting_scores_pca$results$RMSE), "RMSE"]^2
 
-# calculating MSE
-dnn_train_pca_mse <- mean((dnn_train_predictions_pca - dt_students_train$exam_score)^2)
+cat("Boosting CV loss: ", boosting_cv_mse)
 
-cat("Training MSE of DNN: ", dnn_train_pca_mse)
 ```
 
-```{r}
-# predicting
-dnn_test_predictions_pca <- predict(dnn_scores_pca, X_nn_test_pca_matrix)
+This looks very interesting, next, I would like to compare all this models and run one of them on a train test set and look, how good will it generalize.
 
-# calculating MSE
-dnn_test_mse_pca <- mean((dnn_test_predictions_pca - dt_students_test$exam_score)^2)
-
-cat("Testing MSE of DNN: ", dnn_test_mse_pca)
-```
-
-```{r}
-dnn_cv_mse_pca <- calculate_cv_loss_for_dnn(dt_students_train, c(32, 1), 100, 0, TRUE)
-dnn_cv_mse_pca
-```
 
 
 # Model Selection
 
--   Compare all of your models based on their CV performance. You will
-    have 8 options to consider: four models with and without PCA.
--   Present the results in a table or chart.
--   Estimate the expected loss of your best model on the test set.
-
+First, I would like to start with a chart with all CV loss values:
 
 ```{r}
-values <- c(lm_cv_mse, tree_cv_mse, rf_cv_mse, dnn_cv_mse_1, lm_pca_cv_mse, tree_pca_cv_mse, rf_pca_cv_mse, dnn_cv_mse_pca)
-custom_labels <- c("Linear model", "Tree model", "Random forest", "DNN", "Linear model PCA", "Tree model PCA", "Random forest PCA", "DNN PCA")
+values <- c(lm_cv_mse, tree_cv_mse, rf_cv_mse, boosting_cv_mse, lm_pca_cv_mse, tree_pca_cv_mse, rf_pca_cv_mse, boosting_pca_cv_mse)
+custom_labels <- c("Linear model", "Tree model", "Random forest", "GBM", "Linear model PCA", "Tree model PCA", "Random forest PCA", "GBM PCA")
 
 data_for_plot <- data.frame(
   ID = as.factor(custom_labels),
@@ -1263,4 +929,16 @@ ggplot(data_for_plot, aes(x = ID, y = Value)) +
   )
 ```
 
+From the CV loss it is possible to say that GBM without PCA performs the best, but not so much better than simple linear model.
 
+Now, I would like to run predictions on a test set and calculate MSE on test set.
+
+```{r}
+boosting_test_predictions <- predict(caret_gbm, newdata = dt_students_test[, -"student_id"])
+
+boosting_test_mse <- mean((dt_students_test$exam_score - boosting_test_predictions)^2)
+
+cat("GBM test MSE: ", boosting_train_mse)
+```
+
+Test loss is approx. 32% less than a CV loss. I could assume that Gradient Boosting performs very well on this dataset.
