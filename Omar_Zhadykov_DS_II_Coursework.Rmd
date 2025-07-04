@@ -49,10 +49,9 @@ knitr::opts_chunk$set(dev = "svglite")
 library(here)
 setwd(here())
 
-print_results <- function(train, cv, test) {
+print_results <- function(train, cv) {
   cat("Training MSE: ", train, "\n")
   cat("CV Loss: ", cv, "\n")
-  cat("Test MSE: ", test)
 }
 
 ```
@@ -397,16 +396,6 @@ lm_cv_mse <- lm_scores$results$RMSE^2
 cat("Cross-Validation MSE:", lm_cv_mse)
 ```
 
-<br>
-
-and now I want to get MSE from a Test set:
-
-```{r}
-scores_lm_test_predictions <- predict(lm_scores, newdata = dt_students_test)
-
-lm_test_mse <- mean((dt_students_test$exam_score - scores_lm_test_predictions)^2)
-cat("Test MSE:", lm_test_mse, "\n")
-```
 
 ## Tree Model
 
@@ -493,21 +482,22 @@ time to compare their performance.
 ### Linear model performance
 
 ```{r}
-print_results(lm_train_mse, lm_cv_mse, lm_test_mse)
+print_results(lm_train_mse, lm_cv_mse)
 ```
 
-<br> <br>
+<br>
 
 ### Tree model performance
 
 ```{r}
-print_results(tree_train_mse, tree_cv_mse, tree_train_mse)
+print_results(tree_train_mse, tree_cv_mse)
 ```
 
-And I would like to create a small plot to represent visually the difference in performance:
+I will compare all models based on CV loss, so let's start with linear and tree model. 
+This is a small plot to represent visually the difference in performance:
 
 ```{r}
-values <- c(lm_test_mse, tree_test_mse)
+values <- c(lm_cv_mse, tree_cv_mse)
 custom_labels <- c("Linear model", "Tree model")
 
 data_for_plot <- data.frame(
@@ -539,13 +529,13 @@ best overall.
 
 # Ensemble 1
 
-Now it is time to upgrade tree to a random forest. I will be using caret
+Now it is time to upgrade decisions tree to a random forest. I will be using caret
 for model creation and evaluation.
 
 ## Preparation
 
-Before I start with random forest, I need to prepare my hyperparametrs
-before training a random forest. There are 2 main hyperparameters:
+Before I start with random forest, I need to prepare my hyperparametrs.
+There are 2 main hyperparameters:
 
 -   ntree, number of trees grown
 -   mtry, number of variables used
@@ -599,15 +589,6 @@ rf_cv_mse <- optimal_rf$RMSE^2
 print(paste("Cross-validation MSE for the optimal mtry (", rf_scores$bestTune$mtry, "):", rf_cv_mse))
 ```
 
-```{r}
-# calculating test MSE
-test_predictions_rf <- predict(rf_scores, newdata = dt_students_test)
-
-rf_test_mse <- mean((dt_students_test$exam_score - test_predictions_rf)^2)
-
-cat("Random Forest Test MSE:", rf_test_mse)
-```
-
 So, after I trained 500 trees with hyperparameter mtry = 13 I got Train
 MSE ~6, which is so much better than a decision tree, but the CV value is ~38.
 
@@ -616,6 +597,8 @@ MSE ~6, which is so much better than a decision tree, but the CV value is ~38.
 ## Training
 
 As my second ensemble I would like to use Gradient Boosting. I will also use caret to train and cross validate this model.
+
+Let's start with training:
 
 ```{r}
 train_control_boosting <- trainControl(method = "cv", number = 10)
@@ -741,7 +724,7 @@ The behavior of the Random Forest model is particularly surprising. While Random
 
 # PCA
 
-After very interesting investigation and comparement of 4 models, I would like to run PCA and compare CV loss from the all models again.
+After very interesting investigation and comparison of 4 models, I would like to run PCA and compare CV loss from the all models again.
 
 ## Linear model
 
@@ -766,7 +749,7 @@ And small overview of train and CV loss:
 ```{r}
 # Training MSE
 lm_pca_train_predictions <- predict(lm_pca_scores, newdata = dt_students_train[, -"student_id"])
-lm_pca_train_mse <- mean((y_train_pca - lm_pca_train_predictions)^2)
+lm_pca_train_mse <- mean((dt_students_train$exam_score - lm_pca_train_predictions)^2)
 cat("LM PCA Training MSE:", lm_pca_train_mse, "\n")
 
 # CV MSE
@@ -942,3 +925,15 @@ cat("GBM test MSE: ", boosting_train_mse)
 ```
 
 Test loss is approx. 32% less than a CV loss. I could assume that Gradient Boosting performs very well on this dataset.
+
+# Conclusion
+
+This project was all about figuring out how things like study habits and lifestyle affect student exam scores. 
+
+First, we looked closely at the data to understand things like how often students attended classes, how much they slept, and even their mental health, and how these related to their scores.
+
+Then, we built different models: a simple Linear Model, a Decision Tree, and two more advanced ones called Random Forest and Gradient Boosting. We also tried a technique called PCA to simplify the data, but it didn't really help our models perform better.
+
+What we found was pretty cool: the **Gradient Boosting** model was the best at predicting scores, even slightly better than the simple Linear Model. It seems like a more complex model was needed to catch all the little details in the data. The **Random Forest** model was tricky – it got very good at predicting the training data, but not as good with new, unseen data, which means it might have "memorized" too much(overfit the training data).
+
+In the end, our Gradient Boosting model proved to be the most reliable for predicting student exam scores, showing that carefully choosing and testing our prediction tools is key to getting good results.
